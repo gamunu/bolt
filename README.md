@@ -1,7 +1,0 @@
-## Introduction ##
-
-As the number of options for storing enterprise data increases so does the threat that data would be accessed without proper security. Relational databases have security mechanisms that protect tables, rows and sometimes columns from illegal access. However as the data moves to other storage forms like storage on the cloud in distributed tables and memory databases it becomes increasingly difficult to maintain security across all these different platforms. The goal of this project is to research ways in which enterprise security can be always applied no matter the back end storage.
-
-## Solution ##
-
-Windows Azure cloud and Relational Databases has similar database storage structure, In Azure Table Storage each table is identified by a row key and a partition key. Inside those tables data stored as entities each entity also uniquely identified by a row key and a partition key. In each entity there are several properties. Those entities are identical to tuple in Relational Databases. And entity properties names are identical to columns. by using this basis we implement a new access permission system that can enforce security in these data storage systems and library to handle database operations.
