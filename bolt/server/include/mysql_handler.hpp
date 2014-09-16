@@ -19,11 +19,7 @@ public:
 	void HandlePost();
 	void HandleDelete();
 	void HandlePatch();
-	utility::string_t getCondition(utility::string_t cond);
 	void insetKeyValuePropery(MysqlEntity &entity, utility::string_t key, json::value value);
-	void onPreGet();
-	void onPrePost();
-	void onPreDelete();
 private:
 	const http_request &m_http_request;
 	method m_method;

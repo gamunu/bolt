@@ -6,5 +6,5 @@ class MHttpPost
 {
 public:
 	MHttpPost() {};
-	static json::value createTable(json::value object, utility::string_t account_name);
+	static json::value createTable(json::value object);
 };

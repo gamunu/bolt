@@ -101,7 +101,7 @@ utility::string_t Config::getConfigOption(const string con_name)
 	return utility::conversions::to_string_t(m_config_map[con_name].as<string>());
 }
 
-std::string Config::getStdConfigOption(const std::string con_name)
+string Config::getStdConfigOption(const string con_name)
 {
 	if (!m_config_map.count(con_name))
 	{

@@ -94,7 +94,6 @@ SET(SOURCES
 	server/src/whole_handler.cpp
 	server/src/url_utils.cpp
 	server/src/header_utils.cpp
- 	server/src/string_utils.cpp
 	server/src/winservice_base.cpp
 	server/src/winservice_installer.cpp
 	server/src/winbservice.cpp

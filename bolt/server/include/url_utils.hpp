@@ -12,35 +12,37 @@ public:
 	UrlUtils() {}
 	~UrlUtils() {}
 
-	static std::vector<utility::string_t> splitUri(const http_request& message);
-	static std::map<utility::string_t, utility::string_t> splitQueryString(const http_request& message);
+	static vector<string_t> splitUri(const http_request& message);
+	static map<string_t, string_t> splitQueryString(const http_request& message);
 
-	static bool getTableName(const std::vector<utility::string_t> paths, utility::string_t &table);
+	static bool getTableName(const vector<string_t> paths, string_t &table);
 	
 	
-	static bool getTableNamespace(const std::vector<utility::string_t> paths, utility::string_t &tablenamespace);
+	static bool getTableNamespace(const vector<string_t> paths, string_t &tablenamespace);
+	
+	static bool hasTables(const vector<string_t> paths);
+	static bool hasQuery(const vector<string_t> paths);
 
-	static std::vector<utility::string_t> getColumnNames(utility::string_t str);
+	static bool hasAdministration(const vector<string_t> paths);
 
-	static bool hasTables(const std::vector<utility::string_t> paths);
-	static bool hasQuery(const std::vector<utility::string_t> paths);
-
-	static bool hasAdministration(const std::vector<utility::string_t> paths);
-
-	static bool getTableNameWithKeys(const std::vector<utility::string_t> paths, utility::string_t &table, utility::string_t &rowkey, utility::string_t &paritionkey);
-	static bool getTableNameWithoutKeys(const std::vector<utility::string_t> paths, utility::string_t &table);
+	static bool getTableNameWithKeys(const vector<string_t> paths, string_t &table, string_t &rowkey, string_t &paritionkey);
+	static bool getTableNameWithoutKeys(const vector<string_t> paths, string_t &table);
 
 	//Administration
-	static bool getAnalyze(const std::vector<string_t> paths, utility::string_t& tablename);
-	static bool getCheck(const std::vector<string_t> paths, utility::string_t& tablename);
-	static bool getRepair(const std::vector<string_t> paths, utility::string_t& tablename);
-	static bool getIndexes(const std::vector<string_t> paths, utility::string_t& tablename);
-	static bool getKeys(const std::vector<string_t> paths, utility::string_t& tablename);
-	static bool getOptimize(const std::vector<string_t> paths, utility::string_t& tablename);
+	static bool getAnalyze(const vector<string_t> paths, string_t& tablename);
+	static bool getCheck(const vector<string_t> paths, string_t& tablename);
+	static bool getRepair(const vector<string_t> paths, string_t& tablename);
+	static bool getIndexes(const vector<string_t> paths, string_t& tablename);
+	static bool getKeys(const vector<string_t> paths, string_t& tablename);
+	static bool getOptimize(const vector<string_t> paths, string_t& tablename);
 
-	static bool hasEngines(const std::vector<string_t> paths);
-	static bool hasStatus(const std::vector<string_t> paths);
-	static bool hasPlugins(const std::vector<string_t> paths);
-	static bool hasOpenTables(const std::vector<string_t> paths);
+	static bool hasEngines(const vector<string_t> paths);
+	static bool hasStatus(const vector<string_t> paths);
+	static bool hasPlugins(const vector<string_t> paths);
+	static bool hasOpenTables(const vector<string_t> paths);
+
+	static bool getFilter(const map<string_t, string_t> query, map<string_t, string_t> &filter);
+	static bool getSelect(const map < string_t, string_t> query, vector<string_t> &select);
+	static vector<string_t> getColumnNames(string_t str);
 
 };

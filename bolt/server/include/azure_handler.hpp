@@ -17,7 +17,6 @@ public:
 	void HandlePost();
 	void HandleDelete();
 	void HandlePatch();
-	void onPrePost();
 private:
 	void insetKeyValuePropery(boltazure::AzureEntity &entity, utility::string_t key, json::value value);
 	const http::http_request &m_http_request;

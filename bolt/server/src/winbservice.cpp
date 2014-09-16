@@ -72,12 +72,12 @@ void WBService::ServiceWorkerThread(void)
 	m_log_file << BoltLog::LOG_INFO << "WBService in ServiceWorkerThread";
 	m_log_file << BoltLog::LOG_INFO << "Setting UP port and address";
 	
-	string_t address = Config::getInstance().getServerHostWithPort();
+	utility::string_t address = Config::getInstance().getServerHostWithPort();
 
 	g_server_handler = shared_ptr<Dispatch>(new Dispatch(address));
 	g_server_handler->open().wait();
 
-	m_log_file << BoltLog::LOG_INFO << "Listing to port requests at " + conversions::to_utf8string(address);
+	m_log_file << BoltLog::LOG_INFO << "Listing to port requests at " + utility::conversions::to_utf8string(address);
 
 	// Periodically check if the service is stopping.
 	// and Keep running http_listner

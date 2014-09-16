@@ -10,8 +10,16 @@
 
 using namespace std;
 using namespace bolt::storage::boltazure;
+using namespace bolt::storage::mysql;
 
-json::value Metadata::getMysqlTables(string_t account_name)
+struct AzureFilter
+{
+	string_t property_name;
+	string_t condition;
+	string_t value;
+};
+
+json::value Metadata::getMysqlTables()
 {
 	auto mysqltable = MysqlTable();
 	vector<string_t> tables = mysqltable.getTableList();
@@ -24,7 +32,7 @@ json::value Metadata::getMysqlTables(string_t account_name)
 	return metadata;
 }
 
-json::value Metadata::getAzureTables(string_t account_name)
+json::value Metadata::getAzureTables()
 {
 	auto azuretable = AzureTable();
 	vector<string_t> tables = azuretable.getTableList();
@@ -37,14 +45,14 @@ json::value Metadata::getAzureTables(string_t account_name)
 	return metadata;
 }
 
-json::value Metadata::getAzureTable(string_t table_name, string_t account_name)
+json::value Metadata::getAzureTable(string_t table_name)
 {
 	json::value metadata = json::value::object();
 	metadata[U("TableName")] = json::value::string(table_name);
 	return metadata;
 }
 
-json::value Metadata::getMysqlTable(string_t table_name, string_t account_name)
+json::value Metadata::getMysqlTable(string_t table_name)
 {
 	json::value metadata = json::value::object();
 	metadata[U("TableName")] = json::value::string(table_name);
@@ -59,59 +67,7 @@ json::value Metadata::getAzureEntity(string_t table_name, string_t rowkey, strin
 	{
 		result = azurequery->filterByKey(partitionkey, rowkey);
 	}
-
-	//Entity json array
-	json::value entities = json::value::array();
-	size_t i = 0; //Entity json array index
-	for (auto ait = result.cbegin(); ait != result.cend(); ++ait, ++i)
-	{
-		json::value entity = json::value::object(); //Entity property set
-		for (auto pit = ait->properties().cbegin(); pit != ait->properties().cend(); ++pit)
-		{
-			entity_property propery = pit->second;
-			string_t property_key = pit->first;
-
-			switch (propery.property_type())
-			{
-			case edm_type::string:
-				entity[property_key] = json::value::string(propery.string_value());
-				break;
-			case edm_type::double_floating_point:
-				entity[property_key] = json::value::number(propery.double_value());
-				break;
-			case edm_type::datetime:
-				entity[property_key] = json::value::string(propery.datetime_value().to_string());
-				break;
-			case edm_type::boolean:
-				entity[property_key] = json::value::boolean(propery.boolean_value());
-				break;
-			case edm_type::int64:
-				entity[property_key] = json::value(propery.int64_value());
-				break;
-			case edm_type::binary:
-				entity[property_key] = json::value::string(propery.string_value());
-				break;
-			case edm_type::guid:
-				entity[property_key] = json::value::string(propery.string_value());
-				break;
-			case edm_type::int32:
-				entity[property_key] = json::value::number(propery.int32_value());
-				break;
-			default:
-				entity[property_key] = json::value::string(propery.string_value());
-
-				break;
-			}
-		}
-
-		entity[U("Timestamp")] = json::value::string(ait->timestamp().to_string(datetime::date_format::ISO_8601));
-		entities[i] = entity;
-	}
-	//Entity enclosing object
-	json::value replyObj = json::value::object();
-	replyObj[U("value")] = entities;
-
-	return replyObj;
+	return generateAzureEntityMeta(result);
 }
 
 json::value Metadata::getMysqlEntity(string_t table_name, string_t rowkey, string_t partitionkey)
@@ -125,6 +81,82 @@ json::value Metadata::getMysqlEntity(string_t table_name, string_t rowkey, strin
 	}
 
 	return generateEntityMeta(result);
+}
+
+json::value Metadata::getMysqlEntities(string_t table_name, map<string_t, string_t> const query)
+{
+
+	auto mysqlquery = MysqlQuery(); //MysqlQuery Object
+	mysqlquery.from(table_name);
+	vector<string_t> select;
+
+	if (UrlUtils::getSelect(query, select))
+	{
+		string_t columns;
+		auto last_iteration = --select.cend();
+		for (auto iter = select.cbegin(); iter != select.cend(); ++iter)
+		{
+			columns += *iter;
+
+			if (iter != last_iteration)
+			{
+				columns += U(",");
+			}
+		}
+		mysqlquery.select(columns);
+	}
+
+	map<string_t, string_t> filter_conditions;
+	if (UrlUtils::getFilter(query, filter_conditions))
+	{
+		string_t firstwhere;
+		string_t secondwhere;
+
+
+		if (filter_conditions.find(U("first_attr")) != filter_conditions.cend()
+			&& filter_conditions.find(U("first_con")) != filter_conditions.cend()
+			&& filter_conditions.find(U("first_val")) != filter_conditions.cend())
+		{
+			firstwhere = filter_conditions.find(U("first_attr"))->second;
+
+			string_t first_con = filter_conditions.find(U("first_con"))->second;
+
+			firstwhere += getCondition(first_con);
+
+			firstwhere += filter_conditions.find(U("first_val"))->second;
+		}
+
+		if (filter_conditions.find(U("second_attr")) != filter_conditions.cend()
+			&& filter_conditions.find(U("second_con")) != filter_conditions.cend()
+			&& filter_conditions.find(U("second_val")) != filter_conditions.cend())
+		{
+			secondwhere = filter_conditions.find(U("second_attr"))->second;
+
+			string_t second_con = filter_conditions.find(U("second_con"))->second;
+			secondwhere += getCondition(second_con);
+
+			secondwhere += filter_conditions.find(U("second_val"))->second;
+		}
+
+		mysqlquery.where(firstwhere);
+
+		if (filter_conditions.find(U("join")) != filter_conditions.cend())
+		{
+			string_t join = filter_conditions.find(U("join"))->second;
+
+			if (join == U("or"))
+			{
+				mysqlquery.orWhere(secondwhere);
+			}
+
+			if (join == U("and"))
+			{
+				mysqlquery.andWhere(secondwhere);
+			}
+		}
+	}
+
+	return generateEntityMeta(mysqlquery.queryAll());
 }
 
 bool Metadata::getMysqlQueryResults(const json::object &query_obj, json::value& result)
@@ -521,6 +553,77 @@ bool Metadata::getAdministration(const vector<string_t> paths, json::value& resu
 	return false;
 }
 
+json::value Metadata::getAzureEntities(string_t table_name, map<string_t, string_t> const query)
+{
+	auto azurequery = AzureQuery(table_name); //MysqlQuery Object
+	//azurequery.from(table_name);
+	vector<string_t> select;
+
+	if (UrlUtils::getSelect(query, select))
+	{
+		azurequery.select(select);
+	}
+
+	map<string_t, string_t> filter_conditions;
+	if (UrlUtils::getFilter(query, filter_conditions))
+	{
+		AzureFilter first_filter;
+		AzureFilter second_filter;
+
+		if (filter_conditions.find(U("first_attr")) != filter_conditions.cend()
+			&& filter_conditions.find(U("first_con")) != filter_conditions.cend()
+			&& filter_conditions.find(U("first_val")) != filter_conditions.cend())
+		{
+			first_filter.property_name = filter_conditions.find(U("first_attr"))->second;
+			first_filter.condition = filter_conditions.find(U("first_con"))->second;
+			first_filter.value = filter_conditions.find(U("first_val"))->second;
+		}
+
+		if (filter_conditions.find(U("second_attr")) != filter_conditions.cend()
+			&& filter_conditions.find(U("second_con")) != filter_conditions.cend()
+			&& filter_conditions.find(U("second_val")) != filter_conditions.cend())
+		{
+			second_filter.property_name = filter_conditions.find(U("second_attr"))->second;
+			second_filter.condition = filter_conditions.find(U("second_con"))->second;
+			second_filter.value = filter_conditions.find(U("second_val"))->second;
+		}
+
+		azurequery.setFilterCondition(first_filter.property_name, first_filter.condition, first_filter.value);
+
+		if (filter_conditions.find(U("join")) != filter_conditions.cend())
+		{
+			string_t join = filter_conditions.find(U("join"))->second;
+
+			if (join == U("or"))
+			{
+				azurequery.setOrFilterCondition(second_filter.property_name, second_filter.condition, second_filter.value);
+			}
+
+			if (join == U("and"))
+			{
+				azurequery.setAndFilterCondition(second_filter.property_name, second_filter.condition, second_filter.value);
+			}
+		}
+	}
+
+	return generateAzureEntityMeta(azurequery.queryAll());
+}
+
+string_t Metadata::getCondition(string_t condition)
+{
+	if (condition == U("le"))
+		return U(" <= ");
+	if (condition == U(" lt "))
+		return U(" < ");
+	if (condition == U("ge"))
+		return U(" >= ");
+	if (condition == U("gt"))
+		return U(" > ");
+	if (condition == U("ne"))
+		return U(" != ");
+	return U(" = "); //eq
+}
+
 template<typename container>
 json::value Metadata::generateEntityMeta(container entity_vector)
 {
@@ -544,13 +647,66 @@ json::value Metadata::generateEntityMeta(container entity_vector)
 				entity[property_key] = json::value(pit->second.int64_value());
 				break;
 			case myedm_type::int32:
-				entity[property_key] = json::value(pit->second.int64_value());
+				entity[property_key] = json::value(pit->second.int32_value());
 				break;
 			default:
 				entity[property_key] = json::value(propery.string_value());
 				break;
 			}
 		}
+		entities[i] = entity;
+	}
+	//Entity enclosing object
+	json::value replyObj = json::value::object();
+	replyObj[U("value")] = entities;
+
+	return replyObj;
+}
+
+template <class container>
+json::value Metadata::generateAzureEntityMeta(container entity_vector)
+{	//Entity json array
+	json::value entities = json::value::array();
+	size_t i = 0; //Entity json array index
+	for (auto ait = entity_vector.cbegin(); ait != entity_vector.cend(); ++ait, ++i)
+	{
+		json::value entity = json::value::object(); //Entity property set
+		for (auto pit = ait->properties().cbegin(); pit != ait->properties().cend(); ++pit)
+		{
+			entity_property propery = pit->second;
+			string_t property_key = pit->first;
+
+			switch (propery.property_type())
+			{
+			case edm_type::string:
+				entity[property_key] = json::value::string(propery.string_value());
+				break;
+			case edm_type::double_floating_point:
+				entity[property_key] = json::value::number(propery.double_value());
+				break;
+			case edm_type::datetime:
+				entity[property_key] = json::value::string(propery.datetime_value().to_string());
+				break;
+			case edm_type::boolean:
+				entity[property_key] = json::value::boolean(propery.boolean_value());
+				break;
+			case edm_type::int64:
+				entity[property_key] = json::value(propery.int64_value());
+				break;
+			case edm_type::binary:
+				entity[property_key] = json::value::string(propery.string_value());
+				break;
+			case edm_type::guid:
+				entity[property_key] = json::value::string(propery.string_value());
+				break;
+			case edm_type::int32:
+				entity[property_key] = json::value::number(propery.int32_value());
+				break;
+			default:
+				entity[property_key] = json::value::string(propery.string_value());
+			}
+		}
+		entity[U("Timestamp")] = json::value::string(ait->timestamp().to_string(datetime::date_format::ISO_8601));
 		entities[i] = entity;
 	}
 	//Entity enclosing object

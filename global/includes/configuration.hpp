@@ -5,8 +5,8 @@
 
 #include <boost/program_options.hpp>
 #include <logger.hpp>
-#include <string_utils.hpp>
 namespace po = boost::program_options;
+#include <cpprest/asyncrt_utils.h>
 
 
 class Config

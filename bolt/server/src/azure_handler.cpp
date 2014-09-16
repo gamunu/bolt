@@ -4,9 +4,7 @@
 #include <header_utils.hpp>
 #include "azure_query.h"
 #include "azure_table.h"
-#include <string_utils.hpp>
 #include <signature.hpp>
-
 #include "was/table.h"
 #include <metadata.hpp>
 #include <ahttppost.hpp>
@@ -47,14 +45,10 @@ void AzureHandler::InitializeHandlers()
 /// </summary>
 void AzureHandler::HandleGet()
 {
-	http_headers headers = m_http_request.headers();
-
 	auto paths = UrlUtils::splitUri(m_http_request);
 	auto query = UrlUtils::splitQueryString(m_http_request);
-	auto select = query.find(SELECT);
 
-	//userid of the user account
-	string_t account_name;
+
 	//Requested table name
 	string_t table_name;
 	string_t rowkey;
@@ -67,52 +61,29 @@ void AzureHandler::HandleGet()
 		return;
 	}
 
-	unique_ptr<Signature> signature(new Signature(HeaderUtils::getAuthorizationString(headers)));
-	account_name = signature->splitUserAndPassword().first;
-
-	if (account_name == U(""))
-	{
-		m_http_request.reply(status_codes::Unauthorized);
-		return;
-	}
-
 	if (UrlUtils::hasTables(paths))
 	{
-		m_http_request.reply(status_codes::OK, Metadata::getAzureTables(account_name));
+		m_http_request.reply(status_codes::OK, Metadata::getAzureTables());
 		return;
 	}
-
-
-
+	
 	if (UrlUtils::getTableNameWithKeys(paths, table_name, rowkey, partitionkey))
 	{
-		if (permissions->hasGet(table_name, account_name))
-		{
-			if (select != query.end())
-			{
-				vector<string_t> clmns = UrlUtils::getColumnNames(select->second);
-				if (permissions->hasGet(table_name, account_name, clmns))
-				{
-					m_http_request.reply(status_codes::Unauthorized);
-					return;
-				}
-			}
-		}
-		else
-		{
-			m_http_request.reply(status_codes::Unauthorized);
-			return;
-		}
-
 		//if partition key and row key found we are good to go
 		if (!(rowkey.empty() && partitionkey.empty()))
 		{
-			m_http_request.reply(status_codes::OK, Metadata::getMysqlEntity(table_name, rowkey, partitionkey));
+			m_http_request.reply(status_codes::OK, Metadata::getAzureEntity(table_name, rowkey, partitionkey));
 			return;
 		}
 	}
+
+	if (UrlUtils::getTableNameWithoutKeys(paths, table_name))
+	{
+		m_http_request.reply(status_codes::OK, Metadata::getAzureEntities(table_name, query));
+		return;
+	}
+
 	m_http_request.reply(status_codes::BadRequest);
-	return;
 }
 
 /// <summary>
@@ -120,7 +91,6 @@ void AzureHandler::HandleGet()
 /// </summary>
 void AzureHandler::HandlePost()
 {
-
 	http_headers headers = m_http_request.headers();
 	auto paths = UrlUtils::splitUri(m_http_request);
 
@@ -130,20 +100,9 @@ void AzureHandler::HandlePost()
 		return;
 	}
 
-	//userid of the user account
-	string_t account_name;
 	//Requested table name
 	string_t table_name;
 	string_t table_namespace;
-
-	unique_ptr<Signature> signature(new Signature(HeaderUtils::getAuthorizationString(headers)));
-	account_name = signature->splitUserAndPassword().first;
-
-	if (account_name == U(""))
-	{
-		m_http_request.reply(status_codes::Unauthorized);
-		return;
-	}
 
 	if (!UrlUtils::getTableNamespace(paths, table_namespace))
 	{
@@ -156,7 +115,7 @@ void AzureHandler::HandlePost()
 	if (UrlUtils::hasTables(paths))
 	{
 		json::value const & obj = m_http_request.extract_json().get();
-		json::value meta = AHttpPost::createTable(obj, account_name);
+		json::value meta = AHttpPost::createTable(obj);
 
 		if (!meta.is_null())
 		{
@@ -175,11 +134,6 @@ void AzureHandler::HandlePost()
 			return;
 		}
 
-		if (!permissions->hasPost(table_name, account_name))
-		{
-			m_http_request.reply(status_codes::Unauthorized);
-			return;
-		}
 		json::value const & obj = m_http_request.extract_json().get();
 		if (!obj.is_null())
 		{
@@ -196,11 +150,7 @@ void AzureHandler::HandlePost()
 				{
 					clmns.push_back(pair.first);
 				}
-				if (!permissions->hasPost(table_name, account_name, clmns))
-				{
-					m_http_request.reply(status_codes::Unauthorized);
-					return;
-				}
+
 				//find partition key in the map
 				auto partitionkey_find = property_map.find(U("PartitionKey"));
 				//find row key in the map
@@ -256,23 +206,11 @@ void AzureHandler::HandlePost()
 
 void AzureHandler::HandleDelete()
 {
-	http_headers headers = m_http_request.headers();
 	auto paths = UrlUtils::splitUri(m_http_request);
 
-	//userid of the user account
-	string_t account_name;
 	//Requested table name
 	string_t table_name;
 
-
-	unique_ptr<Signature> signature(new Signature(HeaderUtils::getAuthorizationString(headers)));
-	account_name = signature->splitUserAndPassword().first;
-
-	if (account_name == U(""))
-	{
-		m_http_request.reply(status_codes::Unauthorized);
-		return;
-	}
 	//Table name checks for "Table('table_name')" 
 	//and assings the table name to the given variable
 	if (UrlUtils::getTableName(paths, table_name))
@@ -282,7 +220,6 @@ void AzureHandler::HandleDelete()
 		{
 			m_http_request.reply(status_codes::NoContent);
 			return;
-
 		}
 		m_http_request.reply(status_codes::NoContent);
 		return;
@@ -295,8 +232,7 @@ void AzureHandler::HandlePatch()
 {
 	http_headers headers = m_http_request.headers();
 	auto paths = UrlUtils::splitUri(m_http_request);
-	//userid of the user account
-	string_t account_name;
+
 	//Requested table name
 	string_t table_name;
 	string_t partition_key;
@@ -308,27 +244,12 @@ void AzureHandler::HandlePatch()
 		return;
 	}
 
-	unique_ptr<Signature> signature(new Signature(HeaderUtils::getAuthorizationString(headers)));
-	account_name = signature->splitUserAndPassword().first;
-
-	if (account_name == U(""))
-	{
-		m_http_request.reply(status_codes::Unauthorized);
-		return;
-	}
-
 	if (!UrlUtils::getTableNameWithKeys(paths, table_name, row_key, partition_key))
 	{
 		m_http_request.reply(status_codes::BadRequest);
 		return;
 	}
-
-	if (!permissions->hasMerge(table_name, account_name))
-	{
-		m_http_request.reply(status_codes::Unauthorized);
-		return;
-	}
-
+	
 	// get the JSON value from the task and display content from it
 	try
 	{
@@ -399,52 +320,4 @@ void AzureHandler::insetKeyValuePropery(boltazure::AzureEntity &entity, string_t
 	{
 		entity.Insert(key, value.as_integer());
 	}
-}
-
-
-void AzureHandler::onPrePost()
-{
-	http_headers headers = m_http_request.headers();
-	auto paths = UrlUtils::splitUri(m_http_request);
-
-	//userid of the user account
-	string_t account_name;
-	//Requested table name
-	string_t table_name;
-	string_t table_namespace;
-
-
-	unique_ptr<Signature> signature(new Signature(HeaderUtils::getAuthorizationString(headers)));
-	account_name = signature->splitUserAndPassword().first;
-
-	if (account_name == U(""))
-	{
-		m_http_request.reply(status_codes::Unauthorized);
-		return;
-	}
-
-	if (!UrlUtils::getTableNamespace(paths, table_namespace))
-	{
-		m_http_request.reply(status_codes::Unauthorized);
-		return;
-	}
-
-	if (UrlUtils::hasTables(paths))
-	{
-		// continue when the response is available
-		// and continue when the JSON value is available
-		json::value const & obj = m_http_request.extract_json().get();
-
-		json::value meta = AHttpPost::createTable(obj, account_name);
-
-		if (!meta.is_null())
-		{
-			m_http_request.reply(status_codes::Created, meta);
-			return;
-		}
-		m_http_request.reply(status_codes::NoContent, meta);
-		return;
-	}
-	m_http_request.reply(status_codes::BadRequest);
-	return;
 }

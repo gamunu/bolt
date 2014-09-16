@@ -1,6 +1,8 @@
 #include <url_utils.hpp>
-#include <boost/tokenizer.hpp>
+#include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string/classification.hpp>
 #include <regex>
+#include <message_types.hpp>
 
 vector<string_t> UrlUtils::splitUri(const http_request& message)
 {
@@ -50,19 +52,11 @@ map<string_t, string_t> UrlUtils::splitQueryString(const http_request& message)
 vector<string_t> UrlUtils::getColumnNames(string_t str)
 {
 	vector<string_t> columns;
-
-	typedef boost::tokenizer < boost::char_separator<wchar_t> >
-		tokenizer;
-	boost::char_separator<wchar_t> sep(U(","));
-	tokenizer tokens(conversions::to_utf8string(str), sep);
-	for (tokenizer::iterator tok_iter = tokens.begin();
-		tok_iter != tokens.end(); ++tok_iter)
-		columns.push_back(conversions::to_string_t(*tok_iter));
-
+	boost::split(columns, str, boost::is_any_of(","));
 	return columns;
 }
 
-bool UrlUtils::hasTables(std::vector<utility::string_t> const paths)
+bool UrlUtils::hasTables(vector<string_t> const paths)
 {
 	if (paths.size() >= 0 && paths[0] == U("Tables"))
 	{
@@ -71,7 +65,7 @@ bool UrlUtils::hasTables(std::vector<utility::string_t> const paths)
 	return false;
 }
 
-bool UrlUtils::hasQuery(std::vector<utility::string_t> const paths)
+bool UrlUtils::hasQuery(vector<string_t> const paths)
 {
 	if (paths.size() >= 0 && paths[0] == U("Query"))
 	{
@@ -80,7 +74,7 @@ bool UrlUtils::hasQuery(std::vector<utility::string_t> const paths)
 	return false;
 }
 
-bool UrlUtils::hasAdministration(std::vector<utility::string_t> const paths)
+bool UrlUtils::hasAdministration(vector<string_t> const paths)
 {
 	if (paths.size() >= 0 && paths[0] == U("Administration"))
 	{
@@ -89,7 +83,7 @@ bool UrlUtils::hasAdministration(std::vector<utility::string_t> const paths)
 	return false;
 }
 
-bool UrlUtils::getTableNameWithKeys(std::vector<utility::string_t> const paths, utility::string_t& table, utility::string_t& rowkey, utility::string_t& paritionkey)
+bool UrlUtils::getTableNameWithKeys(vector<string_t> const paths, string_t& table, string_t& rowkey, string_t& paritionkey)
 {
 	//Expression will check for tablename(RowKey='<rowkey>',PartitionKey='<partitionkey>')
 	//Table name must be 2 to 62 long and  can have alphanumaric characters
@@ -106,7 +100,7 @@ bool UrlUtils::getTableNameWithKeys(std::vector<utility::string_t> const paths, 
 	return false;
 }
 
-bool UrlUtils::getTableNameWithoutKeys(std::vector<utility::string_t> const paths, utility::string_t& table)
+bool UrlUtils::getTableNameWithoutKeys(vector<string_t> const paths, string_t& table)
 {
 	//Expression will check for tablename(RowKey='<rowkey>',PartitionKey='<partitionkey>')
 	//Table name must be 2 to 62 long and  can have alphanumaric characters
@@ -121,7 +115,7 @@ bool UrlUtils::getTableNameWithoutKeys(std::vector<utility::string_t> const path
 	return false;
 }
 
-bool UrlUtils::getAnalyze(std::vector<string_t> const paths, utility::string_t& tablename)
+bool UrlUtils::getAnalyze(vector<string_t> const paths, string_t& tablename)
 {
 	if (paths.size() >= 2 && paths[1] == U("Analyze") && !paths[2].empty())
 	{
@@ -131,7 +125,7 @@ bool UrlUtils::getAnalyze(std::vector<string_t> const paths, utility::string_t& 
 	return false;
 }
 
-bool UrlUtils::getCheck(std::vector<string_t> const paths, utility::string_t& tablename)
+bool UrlUtils::getCheck(vector<string_t> const paths, string_t& tablename)
 {
 	if (paths.size() >= 2 && paths[1] == U("Check") && !paths[2].empty())
 	{
@@ -141,7 +135,7 @@ bool UrlUtils::getCheck(std::vector<string_t> const paths, utility::string_t& ta
 	return false;
 }
 
-bool UrlUtils::getRepair(std::vector<string_t> const paths, utility::string_t& tablename)
+bool UrlUtils::getRepair(vector<string_t> const paths, string_t& tablename)
 {
 	if (paths.size() >= 2 && paths[1] == U("Repair") && !paths[2].empty())
 	{
@@ -151,7 +145,7 @@ bool UrlUtils::getRepair(std::vector<string_t> const paths, utility::string_t& t
 	return false;
 }
 
-bool UrlUtils::getIndexes(std::vector<string_t> const paths, utility::string_t& tablename)
+bool UrlUtils::getIndexes(vector<string_t> const paths, string_t& tablename)
 {
 	if (paths.size() >= 2 && paths[1] == U("Indexes") && !paths[2].empty())
 	{
@@ -161,7 +155,7 @@ bool UrlUtils::getIndexes(std::vector<string_t> const paths, utility::string_t& 
 	return false;
 }
 
-bool UrlUtils::getKeys(std::vector<string_t> const paths, utility::string_t& tablename)
+bool UrlUtils::getKeys(vector<string_t> const paths, string_t& tablename)
 {
 	if (paths.size() >= 2 && paths[1] == U("Keys") && !paths[2].empty())
 	{
@@ -171,7 +165,7 @@ bool UrlUtils::getKeys(std::vector<string_t> const paths, utility::string_t& tab
 	return false;
 }
 
-bool UrlUtils::getOptimize(std::vector<string_t> const paths, utility::string_t& tablename)
+bool UrlUtils::getOptimize(vector<string_t> const paths, string_t& tablename)
 {
 	if (paths.size() >= 2 && paths[1] == U("Optimize") && !paths[2].empty())
 	{
@@ -181,7 +175,7 @@ bool UrlUtils::getOptimize(std::vector<string_t> const paths, utility::string_t&
 	return false;
 }
 
-bool UrlUtils::hasEngines(std::vector<string_t> const paths)
+bool UrlUtils::hasEngines(vector<string_t> const paths)
 {
 	if (paths.size() >= 2 && paths[1] == U("Engines"))
 	{
@@ -190,7 +184,7 @@ bool UrlUtils::hasEngines(std::vector<string_t> const paths)
 	return false;
 }
 
-bool UrlUtils::hasStatus(std::vector<string_t> const paths)
+bool UrlUtils::hasStatus(vector<string_t> const paths)
 {
 	if (paths.size() >= 2 && paths[1] == U("Status"))
 	{
@@ -199,7 +193,7 @@ bool UrlUtils::hasStatus(std::vector<string_t> const paths)
 	return false;
 }
 
-bool UrlUtils::hasPlugins(std::vector<string_t> const paths)
+bool UrlUtils::hasPlugins(vector<string_t> const paths)
 {
 	if (paths.size() >= 2 && paths[1] == U("Plugins"))
 	{
@@ -208,11 +202,62 @@ bool UrlUtils::hasPlugins(std::vector<string_t> const paths)
 	return false;
 }
 
-bool UrlUtils::hasOpenTables(std::vector<string_t> const paths)
+bool UrlUtils::hasOpenTables(vector<string_t> const paths)
 {
 	if (paths.size() >= 2 && paths[1] == U("OpenTables"))
 	{
 		return true;
 	}
+	return false;
+}
+
+bool UrlUtils::getFilter(map<string_t, string_t> const query, map<string_t, string_t> &filter)
+{
+	map<string_t, string_t> parsed_query;
+
+	//Expression will check for tablename(RowKey='<rowkey>',PartitionKey='<partitionkey>')
+	//Table name must be 2 to 62 long and  can have alphanumaric characters
+	string_t expression_string = U("^(?:(?:\\()(\\w+)(?:\\s)(le|lt|ge|gt|ne|eq)(?:\\s)(\\w+)(?:\\)))(?:(?:\\s)(and|or)(?:\\s)(?:(?:\\()(\\w+)(?:\\s)(le|lt|ge|gt|ne|eq)(?:\\s)(\\w+)(?:\\))))?$");
+	auto lfilter = query.find(FILTER);
+	if (lfilter != query.end())
+	{
+		const wregex expression(expression_string);
+		wsmatch what;
+		//Path[1] is the Table('name')
+		string_t filter_value = lfilter->second;
+		if (regex_match(filter_value, what, expression))
+		{
+			if (what.size() >= 3)
+			{
+				parsed_query.insert(make_pair(U("first_attr"), what[1]));
+				parsed_query.insert(make_pair(U("first_con"), what[2]));
+				parsed_query.insert(make_pair(U("first_val"), what[3]));
+				if (what.size() == 8)
+				{
+					parsed_query.insert(make_pair(U("join"), what[4]));
+					parsed_query.insert(make_pair(U("second_attr"), what[5]));
+					parsed_query.insert(make_pair(U("second_con"), what[6]));
+					parsed_query.insert(make_pair(U("second_val"), what[7]));
+				}
+				filter = parsed_query;
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+bool UrlUtils::getSelect(map<string_t, string_t> const query, vector<string_t>& select)
+{
+	if (query.find(SELECT) != query.cend())
+	{
+		auto lselect = getColumnNames(query.find(SELECT)->second);
+		if (lselect.size() > 0)
+		{
+			select = lselect;
+			return true;
+		}
+	}
+
 	return false;
 }

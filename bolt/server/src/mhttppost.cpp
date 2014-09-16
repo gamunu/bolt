@@ -7,7 +7,7 @@
 using namespace std;
 using namespace bolt::storage::mysql;
 
-json::value MHttpPost::createTable(json::value object, string_t account_name)
+json::value MHttpPost::createTable(json::value object)
 {
 	//TODO:Check if we are in windows or unix
 	wregex name_regx(U("^[A-Za-z][A-Za-z0-9]{2,62}$"));
@@ -20,13 +20,13 @@ json::value MHttpPost::createTable(json::value object, string_t account_name)
 		{
 			 auto iter = object.as_object().find(U("TableName"));
 			
-			 utility::string_t tableName = iter->second.as_string();
+			 string_t tableName = iter->second.as_string();
 			if (regex_match(tableName, name_regx))
 			{
-				boost::scoped_ptr<MysqlTable> table(new MysqlTable());
-				if (table->createTable(tableName))
+				MysqlTable table = MysqlTable();
+				if (table.createTable(tableName))
 				{
-					table_metadata = Metadata::getMysqlTable(tableName, account_name);
+					table_metadata = Metadata::getMysqlTable(tableName);
 				}
 			}
 		}

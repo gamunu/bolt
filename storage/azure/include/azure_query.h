@@ -18,10 +18,9 @@ namespace bolt {
 			class AzureQuery
 			{
 			private:
-				cloud_table Createdtable;
-				std::map<utility::string_t, utility::string_t> filter;
-				std::vector<utility::string_t> filterjoin;
-				BoltLog bolt_logger;
+
+				class AQImpl;
+				std::shared_ptr<AQImpl> qimpl;
 			public:
 				/// <summary>
 				/// Initializes a new instance of the <see cref="Query"/> class.
@@ -29,7 +28,7 @@ namespace bolt {
 				/// <param name="tblName">Name of the table.</param>
 				/// <param name="Account">The account.</param>
 				/// Bolt.Storage.Azure Namespce codes
-				BOLTAZURE_API AzureQuery(utility::string_t tblName);
+				BOLTAZURE_API AzureQuery(utility::string_t tablename);
 				/// <summary>
 				/// Add a Filter by a key
 				/// Filters the by key.
@@ -38,6 +37,11 @@ namespace bolt {
 				/// <param name="rowkey">The rowkey.</param>
 				/// <returns>Query result vector</returns>
 				BOLTAZURE_API std::vector<table_entity> filterByKey(utility::string_t partitionkey, utility::string_t rowkey);
+
+				BOLTAZURE_API void select(const std::vector<utility::string_t> columns);
+				BOLTAZURE_API void setFilterCondition(const utility::string_t propertyname, const utility::string_t coperator, const utility::string_t value);
+				BOLTAZURE_API void setAndFilterCondition(const utility::string_t propertyname, const utility::string_t coperator, const utility::string_t value);
+				BOLTAZURE_API void setOrFilterCondition(const utility::string_t propertyname, const utility::string_t coperator, const utility::string_t value);
 
 				/// <summary>
 				/// Filter by Field
@@ -83,6 +87,8 @@ namespace bolt {
 				BOLTAZURE_API bool deleteEntity(table_result retrieve_result);
 				BOLTAZURE_API bool deleteByKey(utility::string_t partitionkey, utility::string_t rowkey);
 				BOLTAZURE_API bool deleteByField(utility::string_t fieldname, utility::string_t value);
+
+				BOLTAZURE_API std::vector<table_entity> queryAll();
 			};
 		}
 	}

@@ -4,15 +4,12 @@
 #include <header_utils.hpp>
 #include "azure_query.h"
 #include "azure_table.h"
-#include <string_utils.hpp>
 #include <signature.hpp>
-
 #include "was/table.h"
 #include <metadata.hpp>
 #include <ahttppost.hpp>
 using namespace azure;
 using namespace storage;
-using namespace bolt::storage;
 using namespace bolt::auth;
 
 WholeHandler::WholeHandler(const http_request &request, const method method) : m_http_request(request)
@@ -61,20 +58,9 @@ void WholeHandler::HandlePost()
 		return;
 	}
 
-	//userid of the user account
-	string_t account_name;
 	//Requested table name
 	string_t table_name;
-
-	unique_ptr<Signature> signature(new Signature(HeaderUtils::getAuthorizationString(headers)));
-	account_name = signature->splitUserAndPassword().first;
-
-	if (account_name == U(""))
-	{
-		m_http_request.reply(status_codes::Unauthorized);
-		return;
-	}
-
+	
 	// get the JSON value from the task and display content from it
 	try
 	{
@@ -84,11 +70,6 @@ void WholeHandler::HandlePost()
 			return;
 		}
 
-		if (!permissions->hasPost(table_name, account_name))
-		{
-			m_http_request.reply(status_codes::Unauthorized);
-			return;
-		}
 		json::value const & obj = m_http_request.extract_json().get();
 		if (!obj.is_null())
 		{
@@ -105,11 +86,7 @@ void WholeHandler::HandlePost()
 				{
 					clmns.push_back(pair.first);
 				}
-				if (!permissions->hasPost(table_name, account_name, clmns))
-				{
-					m_http_request.reply(status_codes::Unauthorized);
-					return;
-				}
+
 				//find partition key in the map
 				auto partitionkey_find = property_map.find(U("PartitionKey"));
 				//find row key in the map
@@ -125,7 +102,7 @@ void WholeHandler::HandlePost()
 						obj.as_object().size()
 						);
 
-					unique_ptr<MysqlEntity> mentity(new MysqlEntity(
+					unique_ptr<mysql::MysqlEntity> mentity(new mysql::MysqlEntity(
 						table_name,
 						partitionkey_find->second.as_string(), //Remove double quotes
 						rowkey_find->second.as_string(), //Remove double quotes
@@ -197,7 +174,7 @@ void WholeHandler::insetKeyValuePropery(boltazure::AzureEntity &entity, string_t
 	}
 }
 
-void WholeHandler::insetKeyValuePropery(MysqlEntity& entity, utility::string_t key, json::value value)
+void WholeHandler::insetKeyValuePropery(mysql::MysqlEntity& entity, string_t key, json::value value)
 {
 	if (value.is_string())
 	{

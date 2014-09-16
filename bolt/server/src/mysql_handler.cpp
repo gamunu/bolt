@@ -2,7 +2,6 @@
 #include <url_utils.hpp>
 #include <message_types.hpp>
 #include <mysql_query.h>
-#include <string_utils.hpp>
 #include <mysql_delete.h>
 #include <signature.hpp>
 #include <header_utils.hpp>
@@ -44,38 +43,23 @@ void MysqlHandler::InitializeHandlers()
 /// </summary>
 void MysqlHandler::HandleGet()
 {
-	http_headers headers = m_http_request.headers();
-
 	auto paths = UrlUtils::splitUri(m_http_request);
 	auto query = UrlUtils::splitQueryString(m_http_request);
-	auto select = query.find(SELECT);
 
-	//userid of the user account
-	string_t account_name;
 	//Requested table name
 	string_t table_name;
 	string_t rowkey;
 	string_t partitionkey;
-
-
+	
 	if (paths.empty())
 	{
 		m_http_request.reply(status_codes::BadRequest);
 		return;
 	}
 
-	unique_ptr<Signature> signature(new Signature(HeaderUtils::getAuthorizationString(headers)));
-	account_name = signature->splitUserAndPassword().first;
-
-	if (account_name == U(""))
-	{
-		m_http_request.reply(status_codes::Unauthorized);
-		return;
-	}
-
 	if (UrlUtils::hasTables(paths))
 	{
-		m_http_request.reply(status_codes::OK, Metadata::getMysqlTables(account_name));
+		m_http_request.reply(status_codes::OK, Metadata::getMysqlTables());
 		return;
 	}
 
@@ -93,26 +77,6 @@ void MysqlHandler::HandleGet()
 
 	if (UrlUtils::getTableNameWithKeys(paths, table_name, rowkey, partitionkey))
 	{
-		unique_ptr<Signature> signature(new Signature(HeaderUtils::getAuthorizationString(headers)));
-
-		if (permissions->hasGet(table_name, account_name))
-		{
-			if (select != query.end())
-			{
-				vector<string_t> clmns = UrlUtils::getColumnNames(select->second);
-				if (permissions->hasGet(table_name, account_name, clmns))
-				{
-					m_http_request.reply(status_codes::Unauthorized);
-					return;
-				}
-			}
-		}
-		else
-		{
-			m_http_request.reply(status_codes::Unauthorized);
-			return;
-		}
-
 		//if partition key and row key found we are good to go
 		if (!(rowkey.empty() && partitionkey.empty()))
 		{
@@ -120,8 +84,14 @@ void MysqlHandler::HandleGet()
 			return;
 		}
 	}
+
+	if (UrlUtils::getTableNameWithoutKeys(paths, table_name))
+	{
+		m_http_request.reply(status_codes::OK, Metadata::getMysqlEntities(table_name, query));
+		return;
+	}
+
 	m_http_request.reply(status_codes::BadRequest);
-	return;
 }
 
 /// <summary>
@@ -139,20 +109,8 @@ void MysqlHandler::HandlePost()
 		return;
 	}
 
-	//userid of the user account
-	string_t account_name;
 	//Requested table name
 	string_t table_name;
-	string_t table_namespace;
-
-	unique_ptr<Signature> signature(new Signature(HeaderUtils::getAuthorizationString(headers)));
-	account_name = signature->splitUserAndPassword().first;
-
-	if (account_name == U(""))
-	{
-		m_http_request.reply(status_codes::Unauthorized);
-		return;
-	}
 	
 	if (UrlUtils::hasQuery(paths))
 	{
@@ -178,7 +136,7 @@ void MysqlHandler::HandlePost()
 	if (UrlUtils::hasTables(paths))
 	{
 		json::value const & obj = m_http_request.extract_json().get();
-		json::value meta = MHttpPost::createTable(obj, account_name);
+		json::value meta = MHttpPost::createTable(obj);
 
 		if (!meta.is_null())
 		{
@@ -198,11 +156,6 @@ void MysqlHandler::HandlePost()
 			return;
 		}
 
-		if (!permissions->hasPost(table_name, account_name))
-		{
-			m_http_request.reply(status_codes::Unauthorized);
-			return;
-		}
 		json::value const & obj = m_http_request.extract_json().get();
 		if (obj.is_object())
 		{
@@ -215,11 +168,7 @@ void MysqlHandler::HandlePost()
 			{
 				clmns.push_back(pair.first);
 			}
-			if (!permissions->hasPost(table_name, account_name, clmns))
-			{
-				m_http_request.reply(status_codes::Unauthorized);
-				return;
-			}
+
 			//find partition key in the map
 			auto partitionkey_find = property_map.find(U("PartitionKey"));
 			//find row key in the map
@@ -283,38 +232,29 @@ void MysqlHandler::insetKeyValuePropery(MysqlEntity &entity, string_t key, json:
 
 void MysqlHandler::HandleDelete()
 {
-	onPreDelete();
 	auto paths = UrlUtils::splitUri(m_http_request);
-	auto query = UrlUtils::splitQueryString(m_http_request);
 
 	if (paths.empty())
 	{
-		m_http_request.reply(status_codes::OK, json::value::string(U("Table not selected")));
+		m_http_request.reply(status_codes::BadRequest);
 		return;
 	}
 
+	//Requested table name
 	string_t table_name;
-	UrlUtils::getTableName(paths, table_name);
-
-	unique_ptr<MysqlDelete> mysql_delete(new MysqlDelete());
-
-	mysql_delete->selectTable(table_name);
-
-	auto filter_condition = query.find(CONDITION);
-	auto filter_feild = query.find(FIELD);
-	auto filter_value = query.find(VALUE);
-
-	if (filter_condition != query.cend() &&
-		filter_feild != query.cend() &&
-		filter_value != query.cend())
+	
+	//Table name checks for "Table('table_name')" 
+	//and assings the table name to the given variable
+	if (UrlUtils::getTableName(paths, table_name))
 	{
-		mysql_delete->AddCondition(filter_feild->second + getCondition(filter_condition->second) + U("'") + filter_value->second + U("'"));
-		if (!mysql_delete->executeDelete())
+		unique_ptr<MysqlTable> table(new MysqlTable);
+		if (table->deleteTable(table_name))
 		{
 			m_http_request.reply(status_codes::NoContent);
 			return;
+
 		}
-		m_http_request.reply(status_codes::BadRequest);
+		m_http_request.reply(status_codes::NoContent);
 		return;
 	}
 	m_http_request.reply(status_codes::BadRequest);
@@ -333,22 +273,10 @@ void MysqlHandler::HandlePatch()
 		return;
 	}
 
-	//userid of the user account
-	string_t account_name;
 	//Requested table name
 	string_t table_name;
 	string_t paritition_key;
 	string_t row_key;
-	string_t table_namespace;
-	
-	unique_ptr<Signature> signature(new Signature(HeaderUtils::getAuthorizationString(headers)));
-	account_name = signature->splitUserAndPassword().first;
-
-	if (account_name == U(""))
-	{
-		m_http_request.reply(status_codes::Unauthorized);
-		return;
-	}
 
 	if (!UrlUtils::getTableNameWithKeys(paths, table_name, row_key, paritition_key))
 	{
@@ -400,120 +328,4 @@ void MysqlHandler::HandlePatch()
 	{
 		m_http_request.reply(status_codes::BadRequest);
 	}
-}
-
-string_t MysqlHandler::getCondition(string_t cond)
-{
-	if (cond == U("le"))
-		return U(" <= ");
-	if (cond == U(" lt "))
-		return U(" < ");
-	if (cond == U("ge"))
-		return U(" >= ");
-	if (cond == U("gt"))
-		return U(" > ");
-	if (cond == U("ne"))
-		return U(" != ");
-
-	return U(" = "); //eq
-}
-
-void MysqlHandler::onPreGet()
-{
-
-}
-
-void MysqlHandler::onPrePost()
-{
-	http_headers headers = m_http_request.headers();
-
-	auto paths = UrlUtils::splitUri(m_http_request);
-
-	if (paths.empty())
-	{
-		m_http_request.reply(status_codes::BadRequest);
-		return;
-	}
-
-	//userid of the user account
-	string_t account_name;
-	//Requested table name
-	string_t table_name;
-	string_t table_namespace;
-
-	unique_ptr<Signature> signature(new Signature(HeaderUtils::getAuthorizationString(headers)));
-	account_name = signature->splitUserAndPassword().first;
-
-	if (account_name == U(""))
-	{
-		m_http_request.reply(status_codes::Unauthorized);
-		return;
-	}
-
-	if (!UrlUtils::getTableNamespace(paths, table_namespace))
-	{
-		m_http_request.reply(status_codes::Unauthorized);
-		return;
-	}
-
-	// continue when the response is available
-	// and continue when the JSON value is available
-	if (UrlUtils::hasTables(paths))
-	{
-		json::value const & obj = m_http_request.extract_json().get();
-		json::value meta = MHttpPost::createTable(obj, account_name);
-
-		if (!meta.is_null())
-		{
-			m_http_request.reply(status_codes::Created, meta);
-			return;
-		}
-		m_http_request.reply(status_codes::NoContent, meta);
-		return;
-	}
-	m_http_request.reply(status_codes::BadRequest);
-	return;
-}
-
-void MysqlHandler::onPreDelete()
-{
-	http_headers headers = m_http_request.headers();
-	auto paths = UrlUtils::splitUri(m_http_request);
-
-	if (paths.empty())
-	{
-		m_http_request.reply(status_codes::BadRequest);
-		return;
-	}
-
-	//userid of the user account
-	string_t account_name;
-	//Requested table name
-	string_t table_name;
-
-	unique_ptr<Signature> signature(new Signature(HeaderUtils::getAuthorizationString(headers)));
-	account_name = signature->splitUserAndPassword().first;
-
-	if (account_name == U(""))
-	{
-		m_http_request.reply(status_codes::Unauthorized);
-		return;
-	}
-
-	//Table name checks for "Table('table_name')" 
-	//and assings the table name to the given variable
-	if (UrlUtils::getTableName(paths, table_name))
-	{
-		unique_ptr<MysqlTable> table(new MysqlTable);
-		if (table->deleteTable(table_name))
-		{
-			m_http_request.reply(status_codes::NoContent);
-			return;
-
-		}
-		m_http_request.reply(status_codes::NoContent);
-		return;
-	}
-	m_http_request.reply(status_codes::BadRequest);
-	return;
 }
