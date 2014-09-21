@@ -206,15 +206,25 @@ namespace bolt {
 				return false;
 			}
 
-			bool AzureQuery::deleteByField(utility::string_t fieldname, utility::string_t value){
-				/*vector<wa::storage::table_entity> qry;
-				qry = filterByfield(fieldname,value);
-				wa::storage::table_entity ent;
-				ent = qry.pop_back;
-				wa::storage::table_operation deloperation = wa::storage::table_operation::delete_entity(ent);
-				wa::storage::table_result delete_result = Createdtable.execute(deloperation);*/
-
+			bool AzureQuery::executeDelete()
+			{
+				std::vector<table_entity> qry = queryAll();
+				try
+				{
+					for (table_entity entity : qry)
+					{
+						table_operation deloperation = table_operation::delete_entity(entity);
+						table_result delete_result = qimpl->m_table.execute(deloperation);
+					}
+					return true;
+				}
+				catch (const storage_exception& e)
+				{
+					qimpl->bolt_logger << BoltLog::LOG_ERROR << utility::conversions::to_utf8string(e.result().extended_error().message())
+						<< e.result().http_status_code();
+				}
 				return false;
+
 			}
 
 			std::vector<table_entity> AzureQuery::queryAll()

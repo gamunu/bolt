@@ -8,6 +8,7 @@
 #include <mysql_table.h>
 #include <metadata.hpp>
 #include <mhttppost.hpp>
+#include <mhttpdelete.hpp>
 
 using namespace bolt::auth;
 
@@ -233,6 +234,7 @@ void MysqlHandler::insetKeyValuePropery(MysqlEntity &entity, string_t key, json:
 void MysqlHandler::HandleDelete()
 {
 	auto paths = UrlUtils::splitUri(m_http_request);
+	auto query = UrlUtils::splitQueryString(m_http_request);
 
 	if (paths.empty())
 	{
@@ -257,8 +259,18 @@ void MysqlHandler::HandleDelete()
 		m_http_request.reply(status_codes::NoContent);
 		return;
 	}
+
+	if (UrlUtils::getTableNameWithoutKeys(paths, table_name))
+	{
+		if (MHttpDelete::deleteEntities(table_name, query))
+		{
+			m_http_request.reply(status_codes::NoContent);
+			return;
+		}
+		m_http_request.reply(status_codes::NotModified);
+		return;
+	}
 	m_http_request.reply(status_codes::BadRequest);
-	return;
 }
 
 void MysqlHandler::HandlePatch()

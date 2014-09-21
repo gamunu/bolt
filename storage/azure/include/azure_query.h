@@ -86,7 +86,7 @@ namespace bolt {
 				/// <returns></returns>
 				BOLTAZURE_API bool deleteEntity(table_result retrieve_result);
 				BOLTAZURE_API bool deleteByKey(utility::string_t partitionkey, utility::string_t rowkey);
-				BOLTAZURE_API bool deleteByField(utility::string_t fieldname, utility::string_t value);
+				BOLTAZURE_API bool executeDelete();
 
 				BOLTAZURE_API std::vector<table_entity> queryAll();
 			};

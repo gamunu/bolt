@@ -17,18 +17,22 @@ namespace bolt {
 			class MysqlDelete
 			{
 
-			private:
-				utility::string_t icondition;
-				utility::string_t iTableName;
-				BoltLog bolt_logger;
-
 			public:
+				BOLTMYSQL_API MysqlDelete();
+				BOLTMYSQL_API ~MysqlDelete();
 
 				BOLTMYSQL_API void selectTable(utility::string_t tblName);
 				BOLTMYSQL_API void AddCondition(utility::string_t condition);
 				BOLTMYSQL_API bool executeDelete();
 
+				BOLTMYSQL_API MysqlDelete& from(utility::string_t tables);
+				BOLTMYSQL_API MysqlDelete& where(utility::string_t conditions);
+				BOLTMYSQL_API MysqlDelete& andWhere(utility::string_t conditions);
+				BOLTMYSQL_API MysqlDelete& orWhere(utility::string_t conditions);
 
+			private:
+				class MDImpl;
+				std::shared_ptr<MDImpl> dimpl;
 			};
 		}
 	}

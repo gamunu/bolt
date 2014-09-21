@@ -12,6 +12,22 @@ namespace bolt {
 		Signature::Signature(utility::string_t  auth_string)
 		{
 			m_auth_string = auth_string;
+			
+
+			utility::string_t::size_type pos = m_auth_string.find(':');
+			if (m_auth_string.npos != pos) //if a valid signature
+			{
+				m_username = m_auth_string.substr(0, pos);
+				m_signature = m_auth_string.substr(pos + 1);
+			}
+		}
+
+		Signature::Signature()
+		{
+		}
+
+		Signature::~Signature()
+		{
 		}
 
 		bool Signature::isValied(utility::string_t datetime, utility::string_t  resource, utility::string_t  http_method)
@@ -48,6 +64,16 @@ namespace bolt {
 			//hmac<sha256>::calc(utility::conversions::to_utf8string(val_sig), "abcd123", hmacsha256digest);
 			utility::string_t signa = utility::conversions::to_string_t(base64::encode_from_array(hmacsha256digest, 32));
 			return signa;
+		}
+
+		utility::string_t Signature::getUsername() const
+		{
+			return m_username;
+		}
+
+		utility::string_t Signature::getSignature() const
+		{
+			return m_signature;
 		}
 	}
 }

@@ -8,6 +8,7 @@
 #include "was/table.h"
 #include <metadata.hpp>
 #include <ahttppost.hpp>
+#include <ahttpdelete.hpp>
 using namespace azure;
 using namespace storage;
 using namespace bolt::storage;
@@ -207,6 +208,7 @@ void AzureHandler::HandlePost()
 void AzureHandler::HandleDelete()
 {
 	auto paths = UrlUtils::splitUri(m_http_request);
+	auto query = UrlUtils::splitQueryString(m_http_request);
 
 	//Requested table name
 	string_t table_name;
@@ -224,8 +226,19 @@ void AzureHandler::HandleDelete()
 		m_http_request.reply(status_codes::NoContent);
 		return;
 	}
+
+	if (UrlUtils::getTableNameWithoutKeys(paths, table_name))
+	{
+		if (AHttpDelete::deleteEntities(table_name, query))
+		{
+			m_http_request.reply(status_codes::NoContent);
+			return;
+		}
+		m_http_request.reply(status_codes::NotModified);
+		return;
+	}
+
 	m_http_request.reply(status_codes::BadRequest);
-	return;
 }
 
 void AzureHandler::HandlePatch()

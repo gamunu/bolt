@@ -15,7 +15,7 @@ using namespace http;
 class Dispatch::DispatchImpl
 {
 public:
-	unique_ptr<Permissions> permissions;
+	Permissions permissions;
 	BoltLog bolt_logger;
 
 	void handle_get(const http_request message)
@@ -35,31 +35,35 @@ public:
 		}
 
 		string_t table_name; //paths 0 is name of the table
+		string_t rowkey;
+		string_t partitionkey;
 
-	/*	if (UrlUtils::getTableName(paths, table_name))
+		if (UrlUtils::hasTables(paths) || UrlUtils::hasAdministration(paths))
 		{
-			unique_ptr<Signature> signature(new Signature(HeaderUtils::getAuthorizationString(headers)));
+			switchDatabase(methods::GET, message);
+			return;
+		}
+		if (UrlUtils::getTableName(paths, table_name)
+			|| UrlUtils::getTableNameWithKeys(paths, table_name, rowkey, partitionkey)
+			|| UrlUtils::getTableNameWithoutKeys(paths, table_name))
+		{
+			Signature signature(HeaderUtils::getAuthorizationString(headers));
 
-			if (!permissions->hasGet(table_name, signature->splitUserAndPassword().first))
+			if (!permissions.hasGet(table_name, signature.getUsername()))
 			{
-				if (select != query.end())
-				{
-					vector<string_t> clmns = UrlUtils::getColumnNames(select->second);
-					if (!permissions->hasGet(table_name, signature->splitUserAndPassword().first, clmns)){
-						message.reply(status_codes::Unauthorized, json::value::string(U("Column access not permitted")));
-						return;
-					}
-				}
-				else
-				{
-					message.reply(status_codes::Unauthorized, json::value::string(U("Table access not permited")));
+				message.reply(status_codes::Unauthorized, json::value::string(U("Table access not permited")));
+				return;
+			}
+			if (select != query.end())
+			{
+				vector<string_t> clmns = UrlUtils::getColumnNames(select->second);
+				if (!permissions.hasGet(table_name, signature.getUsername(), clmns)){
+					message.reply(status_codes::Unauthorized, json::value::string(U("Column access not permitted")));
 					return;
 				}
 			}
-			switchDatabase(methods::GET, message); //Switch database according to request header x-bolt-database
 		}
-		*/
-		switchDatabase(methods::GET, message);
+		switchDatabase(methods::GET, message); //Switch database according to request header x-bolt-database
 	}
 
 	void handle_post(http_request message)
@@ -79,105 +83,27 @@ public:
 		}
 
 		string_t table_name; //paths 0 is name of the table
-		/*
-		if (UrlUtils::getTableName(paths, table_name))
+
+		if (UrlUtils::hasTables(paths))
 		{
-			unique_ptr<Signature> signature(new Signature(HeaderUtils::getAuthorizationString(headers)));
-
-			if (query.empty())
-			{
-				if (!permissions->hasGet(table_name, signature->splitUserAndPassword().first))
-				{
-					message.extract_json().then([=](pplx::task<json::value> extract_json_task)
-					{
-						vector<string_t> clmns;
-						unique_ptr<Signature> signature(new Signature(HeaderUtils::getAuthorizationString(headers)));
-						// get the JSON value from the task and display content from it
-						try
-						{
-							json::value const& obj = extract_json_task.get();
-							if (!obj.is_null())
-							{
-								for (auto& iter : obj.as_object())
-								{
-									clmns.push_back(iter.first);
-								}
-
-								if (!permissions->hasPost(table_name, signature->splitUserAndPassword().first, clmns))
-								{
-									message.reply(status_codes::Unauthorized, json::value::string(U("Column access not permitted 2")));
-									return;
-								}
-
-								switchDatabase(methods::POST, message);
-								return;
-							}
-						}
-						catch (http_exception const& e)
-						{
-							wcout << e.what() << endl;
-							bolt_logger << BoltLog::LOG_ERROR << e.what();
-							message.reply(status_codes::BadRequest, json::value::string(U("catch")));
-						}
-					}
-					).wait();
-				}
-			}
-			else if (field != query.cend())
-			{
-				if (!permissions->hasMerge(table_name, signature->splitUserAndPassword().first))
-				{
-					message.extract_json().then([=](pplx::task<json::value> extract_json_task)
-					{
-						vector<string_t> clmns;
-						unique_ptr<Signature> signature(new Signature(HeaderUtils::getAuthorizationString(headers)));
-						// get the JSON value from the task and display content from it
-						try
-						{
-							json::value const& obj = extract_json_task.get();
-							if (!obj.is_null())
-							{
-								for (auto& iter : obj.as_object())
-								{
-									clmns.push_back(iter.first);
-								}
-
-								if (!permissions->hasMerge(table_name, signature->splitUserAndPassword().first, clmns))
-								{
-									message.reply(status_codes::Unauthorized, json::value::string(U("Column access not permitted 1")));
-									return;
-								}
-
-								switchDatabase(methods::POST, message);
-								return;
-							}
-						}
-						catch (http_exception const& e)
-						{
-							wcout << e.what() << endl;
-							bolt_logger << BoltLog::LOG_ERROR << e.what();
-							message.reply(status_codes::BadRequest, json::value::string(U("catch")));
-						}
-					}
-					).wait();
-				}
-			}
+			switchDatabase(methods::POST, message);
+			return;
 		}
-		*/
 
-		switchDatabase(methods::POST, message); //Switch database according to request header x-bolt-database
+		if (UrlUtils::getTableNameWithoutKeys(paths, table_name))
+		{
+			Signature signature(HeaderUtils::getAuthorizationString(headers));
+			if (!permissions.hasPost(table_name, signature.getUsername()))
+			{
+				message.reply(status_codes::Unauthorized, json::value::string(U("table access not permitted 2")));
+				return;
+			}
+			switchDatabase(methods::POST, message);
+		}
 	}
 
 	void handle_put(http_request message)
 	{
-		http_headers headers = message.headers();
-
-		unique_ptr<Signature> signature(new Signature(HeaderUtils::getAuthorizationString(headers)));
-
-		if (!signature->isValied(HeaderUtils::getDateTimeString(headers), message.relative_uri().path(), U("PUT")))
-			message.reply(status_codes::Unauthorized, U("Unauthorized Access"));
-		else
-			message.reply(status_codes::Accepted, U("Accepted"));
 		switchDatabase(methods::PUT, message); //Switch database according to request header x-bolt-database
 	}
 
@@ -188,13 +114,13 @@ public:
 		auto paths = UrlUtils::splitUri(message);
 		string_t table_name;
 
-		/*
+
 		if (UrlUtils::getTableName(paths, table_name))
 		{
-			unique_ptr<Signature> signature(new Signature(HeaderUtils::getAuthorizationString(headers)));
+			Signature signature(HeaderUtils::getAuthorizationString(headers));
 
 
-			if (!permissions->hasDelete(table_name, signature->splitUserAndPassword().first))
+			if (!permissions.hasDelete(table_name, signature.getUsername()))
 			{
 				message.reply(status_codes::Unauthorized, json::value::string(U("Table access not permited")));
 				return;
@@ -202,8 +128,18 @@ public:
 
 			switchDatabase(methods::DEL, message); //Switch database according to request header x-bolt-database
 		}
-		*/
-		switchDatabase(methods::DEL, message);
+
+		if (UrlUtils::getTableNameWithoutKeys(paths, table_name))
+		{
+			Signature signature(HeaderUtils::getAuthorizationString(headers));
+			if (!permissions.hasPost(table_name, signature.getUsername()))
+			{
+				message.reply(status_codes::Unauthorized, json::value::string(U("table access not permitted 2")));
+				return;
+			}
+			switchDatabase(methods::DEL, message);
+		}
+
 		message.reply(status_codes::BadRequest);
 	}
 
@@ -267,5 +203,4 @@ Dispatch::Dispatch(string_t url) : m_impl{ new DispatchImpl }, m_listener(url)
 	m_listener.support(methods::POST, bind(&DispatchImpl::handle_post, m_impl, placeholders::_1));
 	m_listener.support(methods::DEL, bind(&DispatchImpl::handle_delete, m_impl, placeholders::_1));
 	m_listener.support(methods::PATCH, bind(&DispatchImpl::handle_patch, m_impl, placeholders::_1));
-	m_impl->permissions = make_unique<Permissions>();
 }

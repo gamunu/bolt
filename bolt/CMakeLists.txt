@@ -88,7 +88,9 @@ SET(SOURCES
 	server/src/main.cpp
 	server/src/dispatch.cpp
 	server/src/mhttppost.cpp
+	server/src/mhttpdelete.cpp
 	server/src/ahttppost.cpp
+	server/src/ahttpdelete.cpp
 	server/src/mysql_handler.cpp
 	server/src/azure_handler.cpp
 	server/src/whole_handler.cpp
