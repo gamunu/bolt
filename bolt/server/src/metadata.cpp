@@ -80,7 +80,7 @@ json::value Metadata::getMysqlEntity(string_t table_name, string_t rowkey, strin
 		result = mysqlquery.filterByKey(partitionkey, rowkey);
 	}
 
-	return generateEntityMeta(result);
+	return generateAzureEntityMeta(result);
 }
 
 json::value Metadata::getMysqlEntities(string_t table_name, map<string_t, string_t> const query)
@@ -156,7 +156,7 @@ json::value Metadata::getMysqlEntities(string_t table_name, map<string_t, string
 		}
 	}
 
-	return generateEntityMeta(mysqlquery.queryAll());
+	return generateAzureEntityMeta(mysqlquery.queryAll());
 }
 
 bool Metadata::getMysqlQueryResults(const json::object &query_obj, json::value& result)
@@ -492,7 +492,7 @@ bool Metadata::getMysqlQueryResults(const json::object &query_obj, json::value& 
 	//Query part
 	string_t host = Config::getInstance().getServerHostWithPort();
 	deque<mysql_table_entity> query_result = query.queryAll();
-	result = generateEntityMeta(query_result);
+	result = generateAzureEntityMeta(query_result);
 
 	return true;
 }
@@ -651,7 +651,6 @@ json::value Metadata::generateEntityMeta(container entity_vector)
 				break;
 			default:
 				entity[property_key] = json::value(propery.string_value());
-				break;
 			}
 		}
 		entities[i] = entity;
@@ -673,7 +672,7 @@ json::value Metadata::generateAzureEntityMeta(container entity_vector)
 		json::value entity = json::value::object(); //Entity property set
 		for (auto pit = ait->properties().cbegin(); pit != ait->properties().cend(); ++pit)
 		{
-			entity_property propery = pit->second;
+			auto propery = pit->second;
 			string_t property_key = pit->first;
 
 			switch (propery.property_type())
@@ -707,6 +706,8 @@ json::value Metadata::generateAzureEntityMeta(container entity_vector)
 			}
 		}
 		entity[U("Timestamp")] = json::value::string(ait->timestamp().to_string(datetime::date_format::ISO_8601));
+		entity[U("PartitionKey")] = json::value::string(ait->partition_key());
+		entity[U("RowKey")] = json::value::string(ait->row_key());
 		entities[i] = entity;
 	}
 	//Entity enclosing object
