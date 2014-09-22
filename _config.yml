@@ -1,0 +1,20 @@
+name: Bolt
+author: Gamunu Bandara
+markdown: redcarpet
+pygments: true
+baseurl: 
+description: A Restfull database connector
+github: http://www.github.com/centideo/bolt
+twitter: http://www.twitter.com/
+facebook: http://www.facebook.com
+linkedin: http://www.linkedin.com
+email: gamunuud[at]gmail.com
+location: 42°2'16"N   70°12'47"W
+disqus: diqus-username
+
+markdown: redcarpet
+redcarpet:
+  extensions: ["no_intra_emphasis", "fenced_code_blocks", "autolink", "tables", "with_toc_data"]
+
+##Make sure to edit the above fields, especially for disqus.
+

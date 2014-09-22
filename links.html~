@@ -1,0 +1,168 @@
+---
+layout: links
+---
+<div class="container">
+
+</div>
+
+<div class="container">
+    <div id="article">
+        <h1>REST API Operations</h1>
+        <p>he REST API for the Table service includes the operations listed in the following table.</p>
+        <br>
+        <center>
+            <a href="#azureandmysql"><span class="label label-danger fashion-button">Azure And MySQL</span></a>
+            <a href="#mysqlspecific"><span class="label label-danger programming-button">MySQL Specific</span></a>
+            <!--	<a href="#tech"><span class="label label-danger tech-button">SQL Server</span></a>
+                    <a href="#misc"><span class="label label-danger misc-button">MongoDB</span></a>
+                    <a href="#misc"><span class="label label-danger podcasts-button">Cassandra</span></a> -->
+        </center>
+        <br>
+
+
+    </div>
+    <div id="article" class="fashion">
+        <a name="azureandmysql">
+            <h2>Azure And MySQL</h2>
+            <table class="table table-hover ">
+                <tbody>
+                    <tr>
+                        <td valign="top" class="td1">
+                            <p class="p2"><span class="s1"><b>Operation</b></span></p>
+                        </td>
+                        <td valign="top" class="td1">
+                            <p class="p2"><span class="s1"><b>Description</b></span></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td valign="top" class="td2">
+                            <p class="p2"><span class="s2"><a href="{% post_url /azure/2014-09-23-Query-Tables %}"><b>Query Tables</b></a></span></p>
+                        </td>
+                        <td valign="top" class="td3">
+                            <p class="p2"><span class="s1">Enumerates the tables in a storage account.<span class="Apple-converted-space"> </span></span></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td valign="top" class="td4">
+                            <p class="p2"><span class="s1"><a href="{% post_url /azure/2014-09-23-Create-Table %}"><b>Create Table</b></a></span></p>
+                        </td>
+                        <td valign="top" class="td5">
+                            <p class="p2"><span class="s1">Creates a new table within a storage account.<span class="Apple-converted-space"> </span></span></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td valign="top" class="td6">
+                            <p class="p2"><span class="s1"><a href="{% post_url /azure/2014-09-23-Delete-Table %}"><b>Delete Table</b></a></span></p>
+                        </td>
+                        <td valign="top" class="td7">
+                            <p class="p2"><span class="s1">Deletes a table from a storage account.</span></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td valign="top" class="td6">
+                            <p class="p2"><span class="s1"><a href="{% post_url /azure/2014-09-23-Query-Entities %}"><b>Query Entities</b></a></span></p>
+                        </td>
+                        <td valign="top" class="td7">
+                            <p class="p2"><span class="s1">Queries data in a table.</span></p>
+                        </td>
+                    </tr>                    
+                    <tr>
+                        <td valign="top" class="td6">
+                            <p class="p2"><span class="s1"><a href="{% post_url /azure/2014-09-23-Insert-Entity %}"><b>Insert Entity</b></a></span></p>
+                        </td>
+                        <td valign="top" class="td7">
+                            <p class="p2"><span class="s1">Inserts a new entity into a table.</span></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td valign="top" class="td6">
+                            <p class="p2"><span class="s1"><a href="#"><b>Insert Or Merge Entity</b></a></span></p>
+                        </td>
+                        <td valign="top" class="td7">
+                            <p class="p2"><span class="s1">Inserts or merges an entity in a table.</span></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td valign="top" class="td6">
+                            <p class="p2"><span class="s1"><a href="#"><b>Insert Or Replace Entity</b></a></span></p>
+                        </td>
+                        <td valign="top" class="td7">
+                            <p class="p2"><span class="s1">Inserts or replaces an entity in a table.</span></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td valign="top" class="td6">
+                            <p class="p2"><span class="s1"><a href="#"><b>Update Entity</b></a></span></p>
+                        </td>
+                        <td valign="top" class="td7">
+                            <p class="p2"><span class="s1">Updates an existing entity within a table by replacing it.</span></p>
+                        </td>
+                    </tr>
+                     <tr>
+                        <td valign="top" class="td6">
+                            <p class="p2"><span class="s1"><a href="#"><b>Merge Entity</b></a></span></p>
+                        </td>
+                        <td valign="top" class="td7">
+                            <p class="p2"><span class="s1">Updates an existing entity within a table by merging new property values into the entity.</span></p>
+                        </td>
+                    </tr>
+                     <tr>
+                        <td valign="top" class="td6">
+                            <p class="p2"><span class="s1"><a href="{% post_url /azure/2014-09-23-Insert-Entity %}"><b>Delete Entity</b></a></span></p>
+                        </td>
+                        <td valign="top" class="td7">
+                            <p class="p2"><span class="s1">Deletes an entity within a table.</span></p>
+                        </td>
+                    </tr>
+                </tbody>
+
+            </table>
+
+    </div>
+    <div id="article"class="programming">
+        <a name="mysqlspecific">
+            <h2>MySQL Specific</h2>
+            <table class="table table-hover ">
+                <tbody>
+                    <tr>
+                        <td valign="top" class="td1">
+                            <p class="p2"><span class="s1"><a href="https://news.ycombinator.com/news"><b>hacker news</b></a></span></p>
+                        </td>
+                        <td valign="top" class="td2">
+                            <p class="p2"><span class="s1">An indispensable community if you’re interested in the more technical side of tech. Incredibly smart people discussing equally (usually) smart topics. <span class="Apple-converted-space"> </span></span></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td valign="top" class="td3">
+                            <p class="p2"><span class="s1"><a href="http://reddit.com/r/programming"><b>r/programming</b></a></span></p>
+                        </td>
+                        <td valign="top" class="td4">
+                            <p class="p2"><span class="s1">An excellent resource for programmers both beginner and experienced. Be sure to check out other related subreddits from their sidebar.<span class="Apple-converted-space"> </span></span></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td valign="top" class="td5">
+                            <p class="p2"><span class="s1"><a href="http://www.codersgrid.com"><b>coders grid</b></a></span></p>
+                        </td>
+                        <td valign="top" class="td6">
+                            <p class="p2"><span class="s1">Great collection of links and articles related to mostly front end development.<span class="Apple-converted-space"> </span></span></p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+    </div>
+
+
+</div>
+<footer>
+    <p class="text-muted credit">&copy; 2014 Herring Cove &middot; <a href="https://github.com/arnp/herring-cove"> Herring Cove for Jekyll </a>2014-01-02 21:36:56 -0500  </p>
+</footer>
+<!-- Bootstrap core JavaScript-->
+<script src="js/jquery-1.10.2.min.js"></script>
+<script src="js/bootstrap.min.js"></script>
+<script src="js/bootstrap.js"></script>
+<script type="text/javascript" src="js/hc.js"></script>
+</body>
+
+</html>
+
