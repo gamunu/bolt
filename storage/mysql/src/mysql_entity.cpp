@@ -65,6 +65,10 @@ namespace bolt
 
 			bool MysqlEntity::ExecuteEntity()
 			{
+				if (entityExists(eimpl->table_entity.row_key(), eimpl->table_entity.partition_key()))
+				{
+					return PatchEntity();
+				}
 				auto properties = eimpl->table_entity.properties();
 
 				for (const auto& property : properties)
@@ -138,6 +142,11 @@ namespace bolt
 
 			bool MysqlEntity::PatchEntity()
 			{
+				if (!entityExists(eimpl->table_entity.row_key(), eimpl->table_entity.partition_key()))
+				{
+					return ExecuteEntity();
+				}
+
 				auto properties = eimpl->table_entity.properties();
 
 				for (const auto& property : properties)
@@ -214,6 +223,10 @@ namespace bolt
 					sql::SQLString query("SELECT COUNT(*) AS count FROM " + conversions::to_utf8string(eimpl->table_name) + " WHERE PartitionKey = ? AND RowKey = ?");
 					MysqlConnection& connection = MysqlConnection::get_instance();
 					std::unique_ptr<sql::PreparedStatement> stmt(connection.getConnection()->prepareStatement(query));
+					
+					stmt->setString(1, conversions::to_utf8string(partition_key));
+					stmt->setString(2, conversions::to_utf8string(row_key));
+
 					std::unique_ptr<sql::ResultSet> res(stmt->executeQuery());
 
 					res->rowsCount();

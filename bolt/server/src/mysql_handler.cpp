@@ -51,7 +51,7 @@ void MysqlHandler::HandleGet()
 	string_t table_name;
 	string_t rowkey;
 	string_t partitionkey;
-	
+
 	if (paths.empty())
 	{
 		m_http_request.reply(status_codes::BadRequest);
@@ -112,7 +112,7 @@ void MysqlHandler::HandlePost()
 
 	//Requested table name
 	string_t table_name;
-	
+
 	if (UrlUtils::hasQuery(paths))
 	{
 		json::value const & obj = m_http_request.extract_json().get();
@@ -121,7 +121,7 @@ void MysqlHandler::HandlePost()
 		{
 			auto &query_map = obj.as_object();
 			json::value result;
-			if(Metadata::getMysqlQueryResults(query_map, result))
+			if (Metadata::getMysqlQueryResults(query_map, result))
 			{
 				m_http_request.reply(status_codes::OK, result);
 				return;
@@ -149,70 +149,59 @@ void MysqlHandler::HandlePost()
 	}
 
 	// get the JSON value from the task and display content from it
-	try
-	{
-		if (!UrlUtils::getTableNameWithoutKeys(paths, table_name))
-		{
-			m_http_request.reply(status_codes::BadRequest);
-			return;
-		}
-
-		json::value const & obj = m_http_request.extract_json().get();
-		if (obj.is_object())
-		{
-			vector<string_t> clmns;
-
-			//map containing the properties received from the http request
-			auto &property_map = obj.as_object();
-
-			for (auto& pair : obj.as_object())
-			{
-				clmns.push_back(pair.first);
-			}
-
-			//find partition key in the map
-			auto partitionkey_find = property_map.find(U("PartitionKey"));
-			//find row key in the map
-			auto rowkey_find = property_map.find(U("RowKey"));
-
-			//if partition key and row key found we are good to go
-			if (partitionkey_find != property_map.end() && rowkey_find != property_map.end())
-			{
-				unique_ptr<MysqlEntity> entity(new MysqlEntity(table_name, partitionkey_find->second.as_string(), //Remove double quotes
-					rowkey_find->second.as_string(), //Remove double quotes
-					obj.as_object().size()
-					));
-				//Create new entity using found
-
-				for (auto& pair : property_map)
-				{
-					if (pair.second == partitionkey_find->second || rowkey_find->second == pair.second)
-						continue;
-					insetKeyValuePropery(*entity, pair.first, pair.second);
-				}
-
-				if (entity->ExecuteEntity() == 1)
-				{
-					m_http_request.reply(status_codes::Created, U("Data added to the database"));
-					return;
-				}
-				else
-				{
-					m_http_request.reply(status_codes::BadRequest);
-					return;
-				}
-			}
-		}
-		else {
-			m_http_request.reply(status_codes::BadRequest);
-		}
-	}
-	catch (http_exception)
+	if (!UrlUtils::getTableNameWithoutKeys(paths, table_name))
 	{
 		m_http_request.reply(status_codes::BadRequest);
+		return;
 	}
-	catch (exception)
+
+	json::value const & obj = m_http_request.extract_json().get();
+	if (obj.is_object())
 	{
+		vector<string_t> clmns;
+
+		//map containing the properties received from the http request
+		auto &property_map = obj.as_object();
+
+		for (auto& pair : obj.as_object())
+		{
+			clmns.push_back(pair.first);
+		}
+
+		//find partition key in the map
+		auto partitionkey_find = property_map.find(U("PartitionKey"));
+		//find row key in the map
+		auto rowkey_find = property_map.find(U("RowKey"));
+
+		//if partition key and row key found we are good to go
+		if (partitionkey_find != property_map.end() && rowkey_find != property_map.end())
+		{
+			MysqlEntity entity = MysqlEntity(table_name, partitionkey_find->second.as_string(), //Remove double quotes
+				rowkey_find->second.as_string(), //Remove double quotes
+				obj.as_object().size()
+				);
+			//Create new entity using found
+
+			for (auto& pair : property_map)
+			{
+				if (pair.second == partitionkey_find->second || rowkey_find->second == pair.second)
+					continue;
+				insetKeyValuePropery(entity, pair.first, pair.second);
+			}
+
+			if (entity.ExecuteEntity())
+			{
+				m_http_request.reply(status_codes::Created);
+				return;
+			}
+			else
+			{
+				m_http_request.reply(status_codes::NotModified);
+				return;
+			}
+		}
+	}
+	else {
 		m_http_request.reply(status_codes::BadRequest);
 	}
 }
@@ -244,7 +233,7 @@ void MysqlHandler::HandleDelete()
 
 	//Requested table name
 	string_t table_name;
-	
+
 	//Table name checks for "Table('table_name')" 
 	//and assings the table name to the given variable
 	if (UrlUtils::getTableName(paths, table_name))
