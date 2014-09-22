@@ -22,80 +22,72 @@ namespace bolt {
 				{
 
 					std::deque<mysql_table_entity> entites;
-					try
+
+					sql::ResultSetMetaData *res_meta = res->getMetaData();
+
+					int column_count = res_meta->getColumnCount();
+
+					//Declare variabels outside loops to improve perfomance
+					//Partition key of an entity
+					utility::string_t parition_key;
+					//Row key of an entity
+					utility::string_t row_key;
+					//a propery of an entity
+					mysql_property property;
+					//MySql table column column name
+					utility::string_t column_name;
+					//A MySql entity
+					mysql_table_entity table_entity;
+
+					while (res->next())
 					{
-						sql::ResultSetMetaData *res_meta = res->getMetaData();
 
-						int column_count = res_meta->getColumnCount();
-
-						//Declare variabels outside loops to improve perfomance
-						//Partition key of an entity
-						utility::string_t parition_key;
-						//Row key of an entity
-						utility::string_t row_key;
-						//a propery of an entity
-						mysql_property property;
-						//MySql table column column name
-						utility::string_t column_name;
-						//A MySql entity
-						mysql_table_entity table_entity;
-
-						while (res->next())
+						for (int i = 1; i <= column_count; i++)
 						{
+							column_name = utility::conversions::to_string_t(res_meta->getColumnName(i));
 
-							for (int i = 1; i <= column_count; i++)
+							if (column_name == U("PartitionKey"))
 							{
-								column_name = utility::conversions::to_string_t(res_meta->getColumnName(i));
-
-								if (column_name == U("PartitionKey"))
-								{
-									parition_key = utility::conversions::to_string_t(res->getString(i));
-									continue;
-								}
-								if (column_name == U("RowKey"))
-								{
-									row_key = utility::conversions::to_string_t(res->getString(i));
-									continue;
-								}
-
-								switch (res_meta->getColumnType(i))
-								{
-								case sql::DataType::BIT: //fall thorugh switch
-								case sql::DataType::TINYINT:
-								case sql::DataType::SMALLINT:
-								case sql::DataType::MEDIUMINT:
-								case sql::DataType::INTEGER:
-									property.set_value(res->getInt(i));
-									break;
-								case sql::DataType::BIGINT:
-									property.set_value(res->getInt64(i));
-									break;
-								case sql::DataType::DOUBLE: //fall thorugh switch
-								case sql::DataType::REAL:
-								case sql::DataType::DECIMAL:
-								case sql::DataType::NUMERIC:
-									property.set_value(res->getDouble(i));
-									break;
-								default:
-									property.set_value(utility::conversions::to_string_t(res->getString(i)));
-									break;
-								}
-								table_entity.add_property(column_name, property);
+								parition_key = utility::conversions::to_string_t(res->getString(i));
+								continue;
 							}
-							//To improve performance try not to declare new objects
-							table_entity.set_partition_key(parition_key);
-							table_entity.set_row_key(row_key);
-							//add entity to vector
-							entites.push_back(table_entity);
-							//Clear properties of the entity
-							table_entity.clear_properties();
+							if (column_name == U("RowKey"))
+							{
+								row_key = utility::conversions::to_string_t(res->getString(i));
+								continue;
+							}
+
+							switch (res_meta->getColumnType(i))
+							{
+							case sql::DataType::BIT: //fall thorugh switch
+							case sql::DataType::TINYINT:
+							case sql::DataType::SMALLINT:
+							case sql::DataType::MEDIUMINT:
+							case sql::DataType::INTEGER:
+								property.set_value(res->getInt(i));
+								break;
+							case sql::DataType::BIGINT:
+								property.set_value(res->getInt64(i));
+								break;
+							case sql::DataType::DOUBLE: //fall thorugh switch
+							case sql::DataType::REAL:
+							case sql::DataType::DECIMAL:
+							case sql::DataType::NUMERIC:
+								property.set_value(res->getDouble(i));
+								break;
+							default:
+								property.set_value(utility::conversions::to_string_t(res->getString(i)));
+								break;
+							}
+							table_entity.add_property(column_name, property);
 						}
-					}
-					catch (sql::SQLException &e)
-					{
-						bolt_logger << BoltLog::LOG_ERROR << "SQLException in MysqlQuery (queryAll) #ERR: "
-							<< e.what() << " (MySQL error code: "
-							<< std::to_string(e.getErrorCode()) << ", SQLState: " << e.getSQLState() << " )";
+						//To improve performance try not to declare new objects
+						table_entity.set_partition_key(parition_key);
+						table_entity.set_row_key(row_key);
+						//add entity to vector
+						entites.push_back(table_entity);
+						//Clear properties of the entity
+						table_entity.clear_properties();
 					}
 
 					return entites;
@@ -190,7 +182,7 @@ namespace bolt {
 			{
 				qimpl->iTableName = table_name;
 			}
-			
+
 			MysqlQuery& MysqlQuery::select(utility::string_t columns)
 			{
 				qimpl->m_query[U("select")] = columns;
@@ -365,29 +357,49 @@ namespace bolt {
 
 			std::deque<mysql_table_entity> MysqlQuery::queryAll()
 			{
+				std::deque<mysql_table_entity> entities;
+				try
+				{
 				MysqlConnection &connection = MysqlConnection::get_instance();
 				utility::string_t query = qimpl->buildQuery();
 				std::unique_ptr<sql::Statement> stmt(connection.getConnection()->createStatement());
 				std::unique_ptr<sql::ResultSet> res(stmt->executeQuery(utility::conversions::to_utf8string(query)));
 
-				return qimpl->innerQuery(res);
+				entities = qimpl->innerQuery(res);
+				}
+				catch (sql::SQLException &e)
+				{
+					qimpl->bolt_logger << BoltLog::LOG_ERROR << "SQLException in MysqlQuery (queryAll) #ERR: "
+						<< e.what() << " (MySQL error code: "
+						<< std::to_string(e.getErrorCode()) << ", SQLState: " << e.getSQLState() << " )";
+				}
+				return entities;
 			}
 
 
 			std::deque<mysql_table_entity> MysqlQuery::filterByKey(utility::string_t partitionkey, utility::string_t rowkey)
 			{
 				utility::string_t qery = U("SELECT * FROM ") + qimpl->iTableName + U(" WHERE PartitionKey=? AND RowKey=?");
+				std::deque<mysql_table_entity> entities;
+				try
+				{
+					MysqlConnection &connection = MysqlConnection::get_instance();
+					std::unique_ptr<sql::PreparedStatement> stmt(connection.getConnection()->prepareStatement(utility::conversions::to_utf8string(qery)));
 
-				MysqlConnection &connection = MysqlConnection::get_instance();
-				std::unique_ptr<sql::PreparedStatement> stmt(connection.getConnection()->prepareStatement(utility::conversions::to_utf8string(qery)));
+					stmt->setString(1, utility::conversions::to_utf8string(partitionkey));
+					stmt->setString(2, utility::conversions::to_utf8string(rowkey));
 
-				stmt->setString(1, utility::conversions::to_utf8string(partitionkey));
-				stmt->setString(2, utility::conversions::to_utf8string(rowkey));
+					std::unique_ptr<sql::ResultSet> res(stmt->executeQuery());
 
-				std::unique_ptr<sql::ResultSet> res(stmt->executeQuery());
-
-
-				return qimpl->innerQuery(res);
+					entities = qimpl->innerQuery(res);
+				}
+				catch (sql::SQLException &e)
+				{
+					qimpl->bolt_logger << BoltLog::LOG_ERROR << "SQLException in MysqlQuery (queryAll) #ERR: "
+						<< e.what() << " (MySQL error code: "
+						<< std::to_string(e.getErrorCode()) << ", SQLState: " << e.getSQLState() << " )";
+				}
+				return entities;
 			}
 
 
