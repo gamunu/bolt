@@ -2,7 +2,7 @@ name: Bolt
 author: Gamunu Bandara
 markdown: redcarpet
 pygments: true
-baseurl: 
+baseurl: /bolt
 description: A Restfull database connector
 github: http://www.github.com/centideo/bolt
 twitter: http://www.twitter.com/
