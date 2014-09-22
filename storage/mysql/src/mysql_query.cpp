@@ -32,6 +32,7 @@ namespace bolt {
 					utility::string_t parition_key;
 					//Row key of an entity
 					utility::string_t row_key;
+					utility::datetime timestamp;
 					//a propery of an entity
 					mysql_property property;
 					//MySql table column column name
@@ -56,7 +57,11 @@ namespace bolt {
 								row_key = utility::conversions::to_string_t(res->getString(i));
 								continue;
 							}
-
+							if (column_name == U("TimeStamp"))
+							{
+								timestamp = utility::datetime::from_string(utility::conversions::to_string_t(res->getString(i)));
+								continue;
+							}
 							switch (res_meta->getColumnType(i))
 							{
 							case sql::DataType::BIT: //fall thorugh switch
@@ -84,6 +89,7 @@ namespace bolt {
 						//To improve performance try not to declare new objects
 						table_entity.set_partition_key(parition_key);
 						table_entity.set_row_key(row_key);
+						table_entity.set_timestamp(timestamp);
 						//add entity to vector
 						entites.push_back(table_entity);
 						//Clear properties of the entity
