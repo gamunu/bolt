@@ -21,5 +21,4 @@ private:
 	void insetKeyValuePropery(boltazure::AzureEntity &entity, utility::string_t key, json::value value);
 	const http::http_request &m_http_request;
 	http::method m_method;
-	std::unique_ptr<Permissions> permissions;
 };

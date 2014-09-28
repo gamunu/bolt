@@ -8,7 +8,11 @@ namespace bolt
 	{
 		namespace mysql
 		{
-			std::vector<mysql_incognito_entity> MySqlDB::innerQuery(utility::string_t sql)
+			MySqlDB::MySqlDB()
+			{
+			}
+
+			std::vector<mysql_incognito_entity> MySqlDB::innerQuery(string_t sql)
 			{
 				std::vector<mysql_incognito_entity> entites;
 
@@ -49,32 +53,28 @@ namespace bolt
 				return entites;
 			}
 
-			MySqlDB::MySqlDB()
-			{
-			}
-
 			std::vector<mysql_incognito_entity> MySqlDB::showEngines()
 			{
 				string_t sql = U("SHOW ENGINES");
-				return MySqlDB::innerQuery(sql);
+				return innerQuery(sql);
 			}
 
 			std::vector<mysql_incognito_entity> MySqlDB::showTableStatus()
 			{
 				string_t sql = U("SHOW TABLE STATUS");
-				return MySqlDB::innerQuery(sql);
+				return innerQuery(sql);
 			}
 
 			std::vector<mysql_incognito_entity> MySqlDB::showPlugins()
 			{
 				string_t sql = U("SHOW PLUGINS");
-				return MySqlDB::innerQuery(sql);
+				return innerQuery(sql);
 			}
 
 			std::vector<mysql_incognito_entity> MySqlDB::showOpenTables()
 			{
 				string_t sql = U("SHOW OPEN TABLES FROM auth");
-				return MySqlDB::innerQuery(sql);
+				return innerQuery(sql);
 			}
 		}
 	}

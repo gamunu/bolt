@@ -51,17 +51,19 @@ public:
 
 			if (!permissions.hasGet(table_name, signature.getUsername()))
 			{
+				if (select != query.end())
+				{
+					vector<string_t> clmns = UrlUtils::getColumnNames(select->second);
+					if (!permissions.hasGet(table_name, signature.getUsername(), clmns))
+					{
+						message.reply(status_codes::Unauthorized, json::value::string(U("Column access not permitted")));
+						return;
+					}
+				}
 				message.reply(status_codes::Unauthorized, json::value::string(U("Table access not permited")));
 				return;
 			}
-			if (select != query.end())
-			{
-				vector<string_t> clmns = UrlUtils::getColumnNames(select->second);
-				if (!permissions.hasGet(table_name, signature.getUsername(), clmns)){
-					message.reply(status_codes::Unauthorized, json::value::string(U("Column access not permitted")));
-					return;
-				}
-			}
+
 		}
 		switchDatabase(methods::GET, message); //Switch database according to request header x-bolt-database
 	}
@@ -84,7 +86,7 @@ public:
 
 		string_t table_name; //paths 0 is name of the table
 
-		if (UrlUtils::hasTables(paths))
+		if (UrlUtils::hasTables(paths) || UrlUtils::hasQuery(paths))
 		{
 			switchDatabase(methods::POST, message);
 			return;

@@ -15,8 +15,6 @@ using namespace bolt::auth;
 MysqlHandler::MysqlHandler(const http_request &request, method method) : m_http_request(request)
 {
 	m_method = method;
-
-	permissions = make_unique<Permissions>();
 }
 
 void MysqlHandler::InitializeHandlers()
@@ -115,7 +113,15 @@ void MysqlHandler::HandlePost()
 
 	if (UrlUtils::hasQuery(paths))
 	{
-		json::value const & obj = m_http_request.extract_json().get();
+		json::value obj;
+		try
+		{
+			obj = m_http_request.extract_json().get();
+		}
+		catch (const json::json_exception &e) {
+			m_http_request.reply(status_codes::BadRequest);
+			return;
+		}
 
 		if (obj.is_object())
 		{
@@ -136,7 +142,15 @@ void MysqlHandler::HandlePost()
 	// and continue when the JSON value is available
 	if (UrlUtils::hasTables(paths))
 	{
-		json::value const & obj = m_http_request.extract_json().get();
+		json::value obj;
+		try
+		{
+			obj = m_http_request.extract_json().get();
+		}
+		catch (const json::json_exception &e) {
+			m_http_request.reply(status_codes::BadRequest);
+			return;
+		}
 		json::value meta = MHttpPost::createTable(obj);
 
 		if (!meta.is_null())
@@ -155,7 +169,15 @@ void MysqlHandler::HandlePost()
 		return;
 	}
 
-	json::value const & obj = m_http_request.extract_json().get();
+	json::value obj;
+	try
+	{
+		obj = m_http_request.extract_json().get();
+	}
+	catch (const json::json_exception &e) {
+		m_http_request.reply(status_codes::BadRequest);
+		return;
+	}
 	if (obj.is_object())
 	{
 		vector<string_t> clmns;
@@ -184,12 +206,12 @@ void MysqlHandler::HandlePost()
 
 			for (auto& pair : property_map)
 			{
-				if (pair.second == partitionkey_find->second || rowkey_find->second == pair.second)
+				if (pair.first == U("PartitionKey") || pair.first == U("RowKey"))
 					continue;
 				insetKeyValuePropery(entity, pair.first, pair.second);
 			}
 
-			if (entity.ExecuteEntity())
+			if (entity.executeEntity())
 			{
 				m_http_request.reply(status_codes::Created);
 				return;
@@ -201,9 +223,8 @@ void MysqlHandler::HandlePost()
 			}
 		}
 	}
-	else {
-		m_http_request.reply(status_codes::BadRequest);
-	}
+
+	m_http_request.reply(status_codes::BadRequest);
 }
 
 void MysqlHandler::insetKeyValuePropery(MysqlEntity &entity, string_t key, json::value value)
@@ -286,47 +307,45 @@ void MysqlHandler::HandlePatch()
 	}
 
 	// get the JSON value from the task and display content from it
+
+	json::value obj;
 	try
 	{
-		json::value const & obj = m_http_request.extract_json().get();
-		if (obj.is_object())
+		obj = m_http_request.extract_json().get();
+	}
+	catch (const json::json_exception &e) {
+		m_http_request.reply(status_codes::BadRequest);
+		return;
+	}
+	if (obj.is_object())
+	{
+		vector<string_t> clmns;
+
+		//map containing the properties received from the http request
+		auto &property_map = obj.as_object();
+
+		for (auto& pair : obj.as_object())
 		{
-			vector<string_t> clmns;
-
-			//map containing the properties received from the http request
-			auto &property_map = obj.as_object();
-
-			for (auto& pair : obj.as_object())
-			{
-				clmns.push_back(pair.first);
-			}
-
-			auto entity = MysqlEntity(table_name, paritition_key, row_key, obj.as_object().size());
-
-			for (auto& pair : property_map)
-			{
-				insetKeyValuePropery(entity, pair.first, pair.second);
-			}
-
-			if (entity.PatchEntity())
-			{
-				m_http_request.reply(status_codes::NoContent, Metadata::getMysqlEntity(table_name, paritition_key, row_key));
-				return;
-			}
-			else
-			{
-				m_http_request.reply(status_codes::NotModified);
-				return;
-			}
+			clmns.push_back(pair.first);
 		}
 
+		auto entity = MysqlEntity(table_name, paritition_key, row_key, obj.as_object().size());
+
+		for (auto& pair : property_map)
+		{
+			insetKeyValuePropery(entity, pair.first, pair.second);
+		}
+
+		if (entity.patchEntity())
+		{
+			m_http_request.reply(status_codes::NoContent, Metadata::getMysqlEntity(table_name, paritition_key, row_key));
+			return;
+		}
+		else
+		{
+			m_http_request.reply(status_codes::NotModified);
+			return;
+		}
 	}
-	catch (http_exception)
-	{
-		m_http_request.reply(status_codes::BadRequest);
-	}
-	catch (exception)
-	{
-		m_http_request.reply(status_codes::BadRequest);
-	}
+	m_http_request.reply(status_codes::BadRequest);
 }

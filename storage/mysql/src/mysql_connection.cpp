@@ -14,7 +14,7 @@ namespace bolt {
 
 			MysqlConnection::MysqlConnection()
 			{
-				setConnectionParams("localhost", "root", "knight", "auth");
+				setConnectionParams("localhost", "root", "knight", "boltdata");
 			}
 
 			int MysqlConnection::setConnectionParams(std::string host, std::string username, std::string password, std::string db){

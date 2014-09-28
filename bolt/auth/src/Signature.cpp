@@ -38,7 +38,7 @@ namespace bolt {
 			//Create signature string using headers //base64(HMAC-SHA256(UTF("")))
 			//decode base64 encoded string HMAC-SHA256(UTF())
 			//generate HMAC-SHA256(UTF()) using user key
-			//compare recived hmac and genereated hmac
+			//compare recived hmac and genereated hmac 
 			std::pair<utility::string_t, utility::string_t > userandsignature = splitUserAndPassword();
 			if (userandsignature.second == createSignature(utility::conversions::to_utf8string(userandsignature.first)))
 				return true;
@@ -61,7 +61,6 @@ namespace bolt {
 			User user;
 			std::string usern = user.getkey(username);
 			hmac<sha256>::calc(utility::conversions::to_utf8string(val_sig), usern, hmacsha256digest);
-			//hmac<sha256>::calc(utility::conversions::to_utf8string(val_sig), "abcd123", hmacsha256digest);
 			utility::string_t signa = utility::conversions::to_string_t(base64::encode_from_array(hmacsha256digest, 32));
 			return signa;
 		}

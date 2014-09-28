@@ -60,92 +60,93 @@ void WholeHandler::HandlePost()
 
 	//Requested table name
 	string_t table_name;
-	
+
 	// get the JSON value from the task and display content from it
+
+	if (!UrlUtils::getTableNameWithoutKeys(paths, table_name))
+	{
+		m_http_request.reply(status_codes::BadRequest);
+		return;
+	}
+
+	json::value obj;
 	try
 	{
-		if (!UrlUtils::getTableNameWithoutKeys(paths, table_name))
+		obj = m_http_request.extract_json().get();
+	}
+	catch (const json::json_exception &e) {
+		m_http_request.reply(status_codes::BadRequest);
+		return;
+	}
+	if (!obj.is_null())
+	{
+		if (obj.is_object())
 		{
-			m_http_request.reply(status_codes::BadRequest);
-			return;
-		}
+			boltazure::AzureTable azure_table = boltazure::AzureTable(table_name);
+			boltazure::AzureEntity entity = boltazure::AzureEntity(azure_table.getTable());
+			vector<string_t> clmns;
 
-		json::value const & obj = m_http_request.extract_json().get();
-		if (!obj.is_null())
-		{
-			if (obj.is_object())
+			//map containing the properties received from the http request
+			auto &property_map = obj.as_object();
+
+			for (auto& pair : obj.as_object())
 			{
-				unique_ptr<boltazure::AzureTable> azure_table(new boltazure::AzureTable(table_name));
-				unique_ptr<boltazure::AzureEntity> entity(new boltazure::AzureEntity(azure_table->getTable()));
-				vector<string_t> clmns;
+				clmns.push_back(pair.first);
+			}
 
-				//map containing the properties received from the http request
-				auto &property_map = obj.as_object();
+			//find partition key in the map
+			auto partitionkey_find = property_map.find(U("PartitionKey"));
+			//find row key in the map
+			auto rowkey_find = property_map.find(U("RowKey"));
 
-				for (auto& pair : obj.as_object())
+			//if partition key and row key found we are good to go
+			if (partitionkey_find != property_map.end() && rowkey_find != property_map.end())
+			{
+				//Create new entity using found
+				entity.createEntity(
+					partitionkey_find->second.as_string(), //Remove double quotes
+					rowkey_find->second.as_string(), //Remove double quotes
+					obj.as_object().size()
+					);
+
+				mysql::MysqlEntity mentity = mysql::MysqlEntity(
+					table_name,
+					partitionkey_find->second.as_string(), //Remove double quotes
+					rowkey_find->second.as_string(), //Remove double quotes
+					obj.as_object().size()
+					);
+
+				for (auto& pair : property_map)
 				{
-					clmns.push_back(pair.first);
+					if (pair.first == U("PartitionKey") || pair.first == U("RowKey"))
+						continue;
+					insetKeyValuePropery(entity, pair.first, pair.second);
+					insetKeyValuePropery(mentity, pair.first, pair.second);
 				}
 
-				//find partition key in the map
-				auto partitionkey_find = property_map.find(U("PartitionKey"));
-				//find row key in the map
-				auto rowkey_find = property_map.find(U("RowKey"));
-
-				//if partition key and row key found we are good to go
-				if (partitionkey_find != property_map.end() && rowkey_find != property_map.end())
+				if (entity.executeEntity())
 				{
-					//Create new entity using found
-					entity->CreateEntity(
-						partitionkey_find->second.as_string(), //Remove double quotes
-						rowkey_find->second.as_string(), //Remove double quotes
-						obj.as_object().size()
-						);
-
-					unique_ptr<mysql::MysqlEntity> mentity(new mysql::MysqlEntity(
-						table_name,
-						partitionkey_find->second.as_string(), //Remove double quotes
-						rowkey_find->second.as_string(), //Remove double quotes
-						obj.as_object().size()
-						));
-
-					for (auto& pair : property_map)
+					if (mentity.executeEntity())
 					{
-						if (pair.second == partitionkey_find->second || rowkey_find->second == pair.second)
-							continue;
-						insetKeyValuePropery(*entity, pair.first, pair.second);
-						insetKeyValuePropery(*mentity, pair.first, pair.second);
-					}
-
-					if (entity->ExecuteEntity() == 1 && mentity->ExecuteEntity())
-					{
-						m_http_request.reply(status_codes::Created, U("Data added to the database"));
+						m_http_request.reply(status_codes::Created);
 						return;
 					}
 					else
 					{
-						m_http_request.reply(status_codes::BadRequest);
+						entity.abort();
+						m_http_request.reply(status_codes::NotModified);
 						return;
 					}
 				}
+				else
+				{
+					m_http_request.reply(status_codes::NotModified);
+					return;
+				}
 			}
 		}
-		else {
-			m_http_request.reply(status_codes::BadRequest);
-			return;
-		}
 	}
-
-	catch (http_exception)
-	{
-		m_http_request.reply(status_codes::BadRequest);
-		return;
-	}
-	catch (exception)
-	{
-		m_http_request.reply(status_codes::BadRequest);
-		return;
-	}
+	m_http_request.reply(status_codes::BadRequest);
 }
 
 void WholeHandler::HandleDelete()
@@ -158,19 +159,19 @@ void WholeHandler::insetKeyValuePropery(boltazure::AzureEntity &entity, string_t
 {
 	if (value.is_string())
 	{
-		entity.Insert(key, value.as_string());
+		entity.insert(key, value.as_string());
 	}
 	else if (value.is_double())
 	{
-		entity.Insert(key, value.as_double());
+		entity.insert(key, value.as_double());
 	}
 	else if (value.is_boolean())
 	{
-		entity.Insert(key, value.as_bool());
+		entity.insert(key, value.as_bool());
 	}
 	else if (value.is_integer())
 	{
-		entity.Insert(key, value.as_integer());
+		entity.insert(key, value.as_integer());
 	}
 }
 

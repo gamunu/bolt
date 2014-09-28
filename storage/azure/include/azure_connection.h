@@ -10,16 +10,15 @@ namespace bolt {
 
 			class AzureConnection
 			{
-			private:
-				cloud_storage_account strAccount;
-
 			public:
 				AzureConnection() {}
 				~AzureConnection() {}
-				void Connect();
-				int Connect(utility::string_t Accountname, utility::string_t AccountKey);
-				cloud_storage_account getConn();
+				cloud_storage_account connect(utility::string_t account_name, utility::string_t account_key);
+				cloud_storage_account connect();
 
+			private:
+				cloud_storage_account storage_account;
+				void set_connect();
 			};
 		}
 	}

@@ -61,7 +61,7 @@ bool Permissions::hasTablePermissions(utility::string_t table_name, utility::str
 		default: break;
 		}
 
-		query += " FROM table_permissions AS tp, auth_users AS au WHERE tp.table_name = ? AND tp.account_id = au.user_id AND au.account_name = ?";
+		query += " FROM table_permissions AS tp, account AS au WHERE tp.table_name = ? AND tp.account_id = au.id AND au.account_name = ?";
 		Connection &con = Connection::GetInstance();
 		std::unique_ptr<sql::PreparedStatement> pre_stmt(con.getConnection()->prepareStatement(query));
 		pre_stmt->setString(1, utility::conversions::to_utf8string(table_name));

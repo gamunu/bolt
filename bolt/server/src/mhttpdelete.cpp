@@ -3,7 +3,7 @@
 #include <url_utils.hpp>
 using namespace bolt::storage::mysql;
 
-bool MHttpDelete::deleteEntities(utility::string_t tablename, std::map<utility::string_t, utility::string_t> const query)
+bool MHttpDelete::deleteEntities(string_t tablename, map<string_t, string_t> const query)
 {
 	MysqlDelete mdelete = MysqlDelete();
 

@@ -11,8 +11,6 @@ namespace bolt {
 			{
 			public:
 				utility::string_t tblname;
-				utility::string_t iTableName;
-				std::vector<utility::string_t> sfields;
 
 				std::map<utility::string_t, utility::string_t> m_query;
 
@@ -80,6 +78,9 @@ namespace bolt {
 							case sql::DataType::NUMERIC:
 								property.set_value(res->getDouble(i));
 								break;
+							case sql::DataType::SQLNULL:
+							case sql::DataType::UNKNOWN:
+								continue;
 							default:
 								property.set_value(utility::conversions::to_string_t(res->getString(i)));
 								break;
@@ -182,11 +183,6 @@ namespace bolt {
 
 			MysqlQuery::~MysqlQuery() //!!
 			{
-			}
-
-			MysqlQuery::MysqlQuery(utility::string_t table_name) : qimpl{ new MQImpl }
-			{
-				qimpl->iTableName = table_name;
 			}
 
 			MysqlQuery& MysqlQuery::select(utility::string_t columns)
@@ -383,102 +379,33 @@ namespace bolt {
 			}
 
 
-			std::deque<mysql_table_entity> MysqlQuery::filterByKey(utility::string_t partitionkey, utility::string_t rowkey)
+			std::deque<mysql_table_entity> MysqlQuery::filterByKey(utility::string_t partition_key, utility::string_t row_key)
 			{
-				utility::string_t qery = U("SELECT * FROM ") + qimpl->iTableName + U(" WHERE PartitionKey=? AND RowKey=?");
+				where(U("PartitionKey=?"));
+				andWhere(U("RowKey=?"));
+
 				std::deque<mysql_table_entity> entities;
+
 				try
 				{
 					MysqlConnection &connection = MysqlConnection::get_instance();
-					std::unique_ptr<sql::PreparedStatement> stmt(connection.getConnection()->prepareStatement(utility::conversions::to_utf8string(qery)));
-
-					stmt->setString(1, utility::conversions::to_utf8string(partitionkey));
-					stmt->setString(2, utility::conversions::to_utf8string(rowkey));
-
+					utility::string_t query = qimpl->buildQuery(); 
+					std::unique_ptr<sql::PreparedStatement> stmt(connection.getConnection()->prepareStatement(utility::conversions::to_utf8string(query)));
+					stmt->setString(1, utility::conversions::to_utf8string(partition_key));
+					stmt->setString(2, utility::conversions::to_utf8string(row_key));
+					
 					std::unique_ptr<sql::ResultSet> res(stmt->executeQuery());
 
 					entities = qimpl->innerQuery(res);
 				}
 				catch (sql::SQLException &e)
 				{
-					qimpl->bolt_logger << BoltLog::LOG_ERROR << "SQLException in MysqlQuery (queryAll) #ERR: "
+					qimpl->bolt_logger << BoltLog::LOG_ERROR << "SQLException in MysqlQuery (filterByKey) #ERR: "
 						<< e.what() << " (MySQL error code: "
 						<< std::to_string(e.getErrorCode()) << ", SQLState: " << e.getSQLState() << " )";
 				}
 				return entities;
 			}
-
-
-
-			/// <summary>
-			/// Selects the table.
-			/// </summary>
-			/// <param name="tblName">Name of the table.</param>
-			/// <returns></returns>
-			void MysqlQuery::selectTable(utility::string_t tblName)
-			{
-				qimpl->iTableName = tblName;
-			}
-
-
-			/* New Api Functions */
-
-
-			/// <summary>
-			/// Executes the query.
-			/// </summary>
-			/// <returns></returns>
-			std::deque<mysql_table_entity> MysqlQuery::executeQuery()
-			{
-				utility::string_t qery = U("SELECT ");
-
-				if (!qimpl->sfields.empty())
-				{
-					for (std::vector<utility::string_t>::size_type i = 0; i != qimpl->sfields.size(); i++) {
-						qery.append(qimpl->sfields[i]);
-						qery.append(U(","));
-					}
-
-					qery = qery.substr(0, qery.size() - 1);
-				}
-				else {
-					qery.append(U("* "));
-				}
-
-				qery.append(U(" FROM "));
-				qery.append(qimpl->iTableName);
-				/*
-				if (!iconditions.empty())
-				{
-				qery.append(U(" WHERE "));
-				qery.append(iconditions);
-				}
-
-				if (!orderfield.empty()){
-				qery.append(U(" ORDER BY "));
-				qery.append(orderfield);
-				qery.append(U(" "));
-				qery.append(order);
-				}
-				else if (!ihaving.empty()){
-				qery.append(U(" HAVING "));
-				qery.append(ihaving);
-				}
-				else if (!igrpfield.empty()){
-				qery.append(U(" GROUP BY "));
-				qery.append(igrpfield);
-				}*/
-
-
-				MysqlConnection &connection = MysqlConnection::get_instance();
-				std::unique_ptr<sql::Statement> stmt(connection.getConnection()->createStatement());
-				std::unique_ptr<sql::ResultSet> res(stmt->executeQuery(utility::conversions::to_utf8string(qery)));
-
-
-				return qimpl->innerQuery(res);
-			}
-
-
 		}
 	}
 }

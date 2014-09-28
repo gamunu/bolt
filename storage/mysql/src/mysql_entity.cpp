@@ -14,9 +14,13 @@ namespace bolt
 				BoltLog bolt_logger;
 				string_t table_name;
 				mysql_table_entity table_entity;
+
+				string_t trans_partition_key;
+				string_t trans_row_key;
+				string_t trans_table_name;
 			};
 
-			MysqlEntity::MysqlEntity(string_t table_name) : eimpl { new MEImpl }
+			MysqlEntity::MysqlEntity(string_t table_name) : eimpl{ new MEImpl }
 			{
 			}
 
@@ -63,11 +67,11 @@ namespace bolt
 				eimpl->table_entity.properties().insert(mysql_table_entity::property_type(PropertyName, mysql_property(value)));
 			}
 
-			bool MysqlEntity::ExecuteEntity()
+			bool MysqlEntity::executeEntity()
 			{
 				if (entityExists(eimpl->table_entity.row_key(), eimpl->table_entity.partition_key()))
 				{
-					return PatchEntity();
+					return patchEntity();
 				}
 				auto properties = eimpl->table_entity.properties();
 
@@ -83,7 +87,7 @@ namespace bolt
 
 				for (auto iter = properties.cbegin(); iter != properties.cend(); ++iter)
 				{
-					c_columns += conversions::to_utf8string(iter->first) += ",";
+					c_columns += "`" + conversions::to_utf8string(iter->first) + "`,";
 					c_values += "?,";
 				}
 
@@ -100,7 +104,7 @@ namespace bolt
 					std::unique_ptr<sql::PreparedStatement> pre_statmt(connection.getConnection()->prepareStatement(qery));
 
 					int index = 1;
-					for (auto iter = properties.cbegin(); iter != properties.cend(); ++iter , ++index)
+					for (auto iter = properties.cbegin(); iter != properties.cend(); ++iter, ++index)
 					{
 						switch (iter->second.property_type())
 						{
@@ -140,13 +144,8 @@ namespace bolt
 			}
 
 
-			bool MysqlEntity::PatchEntity()
+			bool MysqlEntity::patchEntity()
 			{
-				if (!entityExists(eimpl->table_entity.row_key(), eimpl->table_entity.partition_key()))
-				{
-					return ExecuteEntity();
-				}
-
 				auto properties = eimpl->table_entity.properties();
 
 				for (const auto& property : properties)
@@ -160,7 +159,7 @@ namespace bolt
 
 				for (auto iter = properties.cbegin(); iter != properties.cend(); ++iter)
 				{
-					c_columns += conversions::to_utf8string(iter->first) += " = ?";
+					c_columns += "`" + conversions::to_utf8string(iter->first) + "` = ?";
 					if (iter != (--properties.cend()))
 					{
 						c_columns += ",";
@@ -176,7 +175,7 @@ namespace bolt
 					std::unique_ptr<sql::PreparedStatement> pre_statmt(connection.getConnection()->prepareStatement(qery));
 
 					int index = 1;
-					for (auto iter = properties.cbegin(); iter != properties.cend(); ++iter , ++index)
+					for (auto iter = properties.cbegin(); iter != properties.cend(); ++iter, ++index)
 					{
 						switch (iter->second.property_type())
 						{
@@ -223,7 +222,7 @@ namespace bolt
 					sql::SQLString query("SELECT COUNT(*) AS count FROM " + conversions::to_utf8string(eimpl->table_name) + " WHERE PartitionKey = ? AND RowKey = ?");
 					MysqlConnection& connection = MysqlConnection::get_instance();
 					std::unique_ptr<sql::PreparedStatement> stmt(connection.getConnection()->prepareStatement(query));
-					
+
 					stmt->setString(1, conversions::to_utf8string(partition_key));
 					stmt->setString(2, conversions::to_utf8string(row_key));
 
@@ -245,7 +244,32 @@ namespace bolt
 				return false;
 			}
 
-			bool MysqlEntity::ReplaceEntity()
+			bool MysqlEntity::abort()
+			{
+				bool res = false;
+
+				try
+				{
+					MysqlConnection &connection = MysqlConnection::get_instance();
+					sql::SQLString qery("DELETE FROM " + conversions::to_utf8string(eimpl->table_name) + " WHERE PartitionKey = ? AND RowKey = ?");
+					std::unique_ptr<sql::PreparedStatement> stmt(connection.getConnection()->prepareStatement(qery));
+
+					stmt->setString(1, conversions::to_utf8string(eimpl->table_entity.partition_key()));
+					stmt->setString(1, conversions::to_utf8string(eimpl->table_entity.row_key()));
+
+					res = stmt->execute();
+					return true;
+				}
+				catch (sql::SQLException &e)
+				{
+					eimpl->bolt_logger << BoltLog::LOG_ERROR << "SQLException in MysqlDelete "
+						<< "(executeDelete) #ERR: " << e.what() << " (MySQL error code: "
+						<< e.getErrorCode() << ", SQLState: " << e.getSQLState() << " )";
+				}
+				return res;
+			}
+
+			bool MysqlEntity::replaceEntity()
 			{
 				//TODO: Implement function body
 				return false;

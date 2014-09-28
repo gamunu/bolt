@@ -23,10 +23,8 @@ namespace bolt  {
 			{
 
 			public:
-
 				BOLTMYSQL_API MysqlQuery();
 				BOLTMYSQL_API ~MysqlQuery();
-				BOLTMYSQL_API MysqlQuery(utility::string_t table_name);
 
 
 				BOLTMYSQL_API MysqlQuery& select(utility::string_t columns = U("*"));
@@ -50,12 +48,9 @@ namespace bolt  {
 				BOLTMYSQL_API MysqlQuery& munion(utility::string_t sql);
 
 
-				BOLTMYSQL_API std::deque<mysql_table_entity> filterByKey(utility::string_t partitionkey, utility::string_t rowkey);
-				BOLTMYSQL_API void selectTable(utility::string_t tblName);
-				BOLTMYSQL_API std::deque<mysql_table_entity> MysqlQuery::executeQuery();
+				BOLTMYSQL_API std::deque<mysql_table_entity> filterByKey(utility::string_t partition_key, utility::string_t row_key);
 				BOLTMYSQL_API std::deque<mysql_table_entity> queryAll();
-
-
+				
 			private:
 				class MQImpl;
 				std::shared_ptr<MQImpl> qimpl;

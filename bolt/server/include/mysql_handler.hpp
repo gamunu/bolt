@@ -23,6 +23,4 @@ public:
 private:
 	const http_request &m_http_request;
 	method m_method;
-
-	std::unique_ptr<Permissions> permissions;
 };

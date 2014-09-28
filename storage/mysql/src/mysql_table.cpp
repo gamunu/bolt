@@ -163,7 +163,7 @@ namespace bolt
 					MysqlConnection& connection = MysqlConnection::get_instance();
 
 					sql::SQLString query("ALTER TABLE " + conversions::to_utf8string(table_name) +
-						" ADD " + conversions::to_utf8string(column_name));
+						" ADD `" + conversions::to_utf8string(column_name) + "`");
 
 					switch (datatype)
 					{

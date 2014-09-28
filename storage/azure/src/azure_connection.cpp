@@ -9,10 +9,9 @@ namespace bolt  {
 			/// Connects this instance.
 			/// </summary>
 			/// <returns></returns>
-			void AzureConnection::Connect()
+			void AzureConnection::set_connect()
 			{
-				utility::char_t *connection_string = L"UseDevelopmentStorage=true;";
-				strAccount = cloud_storage_account::parse(connection_string);
+
 			}
 
 			/// <summary>
@@ -23,29 +22,16 @@ namespace bolt  {
 			/// <param name="Accountname">The accountname.</param>
 			/// <param name="Accountkey">The accountkey.</param>
 			/// <returns></returns>
-			int AzureConnection::Connect(utility::string_t Accountname, utility::string_t Accountkey)
+			cloud_storage_account AzureConnection::connect(utility::string_t account_name, utility::string_t account_key)
 			{
-				utility::string_t ConnectionString = U("AccountName=") + Accountname + U(";AccountKey=") + Accountkey;
-				strAccount = cloud_storage_account::parse(ConnectionString);
-				if (strAccount.is_initialized()){
-					return 1;
-				}
-				else{
-					return 0;
-				}
+				utility::string_t ConnectionString = U("AccountName=") + account_name + U(";AccountKey=") + account_key;
+				return cloud_storage_account::parse(ConnectionString);
 			}
 
-			/// <summary>
-			///Function for passing connection
-			/// <summary>
-			/// Gets the connection.
-			/// </summary>
-			/// <returns></returns>
-			cloud_storage_account AzureConnection::getConn()
+			cloud_storage_account AzureConnection::connect()
 			{
-				if (!strAccount.is_initialized())
-					AzureConnection::Connect();
-				return strAccount;
+				utility::string_t connection_string = U("UseDevelopmentStorage=true;");
+				return cloud_storage_account::parse(connection_string);
 			}
 		}
 	}

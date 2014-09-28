@@ -72,7 +72,8 @@ json::value Metadata::getAzureEntity(string_t table_name, string_t rowkey, strin
 
 json::value Metadata::getMysqlEntity(string_t table_name, string_t rowkey, string_t partitionkey)
 {
-	auto mysqlquery = MysqlQuery(table_name); //MysqlQuery Object
+	auto mysqlquery = MysqlQuery(); //MysqlQuery 
+	mysqlquery.from(table_name);
 
 	deque<mysql_table_entity> result;
 	if (!(rowkey.empty() && partitionkey.empty()))
