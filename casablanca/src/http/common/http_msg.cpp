@@ -196,21 +196,24 @@ void http_msg_base::_complete(utility::size64_t body_size, std::exception_ptr ex
     }
 }
 
-utility::string_t details::http_msg_base::_extract_string()
+utility::string_t details::http_msg_base::_extract_string(bool force)
 {
-    utility::string_t content, charset;
-    parse_content_type_and_charset(headers().content_type(), content, charset);
-
-    // If no Content-Type then just return an empty string.
-    if(content.empty())
+    utility::string_t content, charset = charset_types::utf8;
+    if (!force)
     {
-        return utility::string_t();
-    }
+        parse_content_type_and_charset(headers().content_type(), content, charset);
 
-    // Content-Type must have textual type.
-    if(!is_content_type_textual(content))
-    {
-        throw http_exception(textual_content_type_missing);
+        // If no Content-Type then just return an empty string.
+        if (content.empty())
+        {
+            return utility::string_t();
+        }
+
+        // Content-Type must have textual type.
+        if (!is_content_type_textual(content))
+        {
+            throw http_exception(textual_content_type_missing);
+        }
     }
 
     if (!instream())
@@ -226,7 +229,8 @@ utility::string_t details::http_msg_base::_extract_string()
     }
 
     // Perform the correct character set conversion if one is necessary.
-    if(utility::details::str_icmp(charset, charset_types::usascii))
+    if (utility::details::str_icmp(charset, charset_types::usascii)
+            || utility::details::str_icmp(charset, charset_types::ascii))
     {
         std::string body;
         body.resize((std::string::size_type)buf_r.in_avail());
@@ -286,22 +290,25 @@ utility::string_t details::http_msg_base::_extract_string()
     }
 }
 
-json::value details::http_msg_base::_extract_json()
+json::value details::http_msg_base::_extract_json(bool force)
 {
-    utility::string_t content, charset;
-    parse_content_type_and_charset(headers().content_type(), content, charset);
-
-    // If no Content-Type then just return a null json value.
-    if(content.empty())
+    utility::string_t content, charset = charset_types::utf8;
+    if (!force)
     {
-        return json::value();
-    }
+        parse_content_type_and_charset(headers().content_type(), content, charset);
 
-    // Content-Type must be "application/json" or one of the unofficial, but common JSON types.
-    if(!is_content_type_json(content))
-    {
-        const utility::string_t actualContentType = utility::conversions::to_string_t(content);
-        throw http_exception((_XPLATSTR("Content-Type must be JSON to extract (is: ") + actualContentType + _XPLATSTR(")")));
+        // If no Content-Type then just return a null json value.
+        if (content.empty())
+        {
+            return json::value();
+        }
+
+        // Content-Type must be "application/json" or one of the unofficial, but common JSON types.
+        if (!is_content_type_json(content))
+        {
+            const utility::string_t actualContentType = utility::conversions::to_string_t(content);
+            throw http_exception((_XPLATSTR("Content-Type must be JSON to extract (is: ") + actualContentType + _XPLATSTR(")")));
+        }
     }
     
     if (!instream())
@@ -326,8 +333,10 @@ json::value details::http_msg_base::_extract_json()
         return json::value::parse(to_string_t(latin1_to_utf16(std::move(body))));
     }
 
-    // utf-8 and usascii
-    else if(utility::details::str_icmp(charset, charset_types::utf8) || utility::details::str_icmp(charset, charset_types::usascii))
+    // utf-8, usascii and ascii
+    else if(utility::details::str_icmp(charset, charset_types::utf8)
+            || utility::details::str_icmp(charset, charset_types::usascii)
+            || utility::details::str_icmp(charset, charset_types::ascii))
     {
         std::string body;
         body.resize(buf_r.in_avail());
@@ -531,7 +540,7 @@ details::_http_request::_http_request(http::method mtd)
     }
 }
 
-details::_http_request::_http_request(std::shared_ptr<http::details::_http_server_context> server_context)
+details::_http_request::_http_request(std::unique_ptr<http::details::_http_server_context> server_context)
   : m_initiated_response(0), 
     m_server_context(std::move(server_context)),
     m_cancellationToken(pplx::cancellation_token::none())

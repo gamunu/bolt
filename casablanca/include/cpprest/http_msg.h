@@ -35,6 +35,24 @@
 #if defined(_MSC_VER) && (_MSC_VER >= 1800)
 #include <ppltasks.h>
 namespace pplx = Concurrency;
+#if (_MSC_VER >= 1900)
+#include <concrt.h>
+#ifndef DEV14_EXTENSIBILITY_WRKRND
+#define DEV14_EXTENSIBILITY_WRKRND
+namespace pplx = Concurrency;
+namespace Concurrency {
+    namespace extensibility {
+        typedef ::Concurrency::event event_t;
+        typedef ::Concurrency::reader_writer_lock reader_writer_lock_t;
+        typedef ::Concurrency::reader_writer_lock::scoped_lock scoped_rw_lock_t;
+        typedef ::Concurrency::reader_writer_lock::scoped_lock_read scoped_read_lock_t;
+
+        typedef ::Concurrency::details::_ReentrantBlockingLock recursive_lock_t;
+        typedef recursive_lock_t::_Scoped_lock scoped_recursive_lock_t;
+    }
+}
+#endif // DEV14_EXTENSIBILITY_WRKRND
+#endif // _MSC_VER >= 1900
 #else 
 #include "pplx/pplxtasks.h"
 #endif
@@ -51,18 +69,11 @@ namespace pplx = Concurrency;
 #include <boost/algorithm/string/predicate.hpp>
 #endif
 
-namespace web {
-
-/// <summary>
-/// Declaration to avoid making a dependency on IISHost.
-/// </summary>
-namespace iis_host
+namespace web 
 {
-    class http_iis_receiver;
-}
-
 namespace http
 {
+
 // URI class has been moved from web::http namespace to web namespace.
 // The below using declarations ensure we dont break existing code.
 // Please use the web::uri class going forward.
@@ -79,6 +90,10 @@ namespace client
 /// HTTP 1.1 specification.
 /// </summary>
 typedef utility::string_t method;
+
+/// <summary>
+/// Common HTTP methods.
+/// </summary>
 class methods
 {
 public:
@@ -104,6 +119,7 @@ public:
 #undef DAT
 };
 
+/// Message direction
 namespace message_direction
 {
     /// <summary>
@@ -191,14 +207,18 @@ public:
         return m_msg.c_str();
     }
 
+    /// <summary>
+    /// Retrieves the underlying error code causing this exception.
+    /// </summary>
+    /// <returns>A std::error_code.</returns>
     const std::error_code & error_code() const
     {
         return m_errorCode;
     }
 
 private:
-    std::string m_msg;
     std::error_code m_errorCode;
+    std::string m_msg;
 };
 
 namespace details
@@ -224,8 +244,8 @@ public:
     _ASYNCRTIMP void set_body(concurrency::streams::istream instream, utility::string_t contentType);
     _ASYNCRTIMP void set_body(concurrency::streams::istream instream, utility::size64_t contentLength, utility::string_t contentType);
 
-    _ASYNCRTIMP utility::string_t _extract_string();
-    _ASYNCRTIMP json::value _extract_json();
+    _ASYNCRTIMP utility::string_t _extract_string(bool force = false);
+    _ASYNCRTIMP json::value _extract_json(bool force = false);
     _ASYNCRTIMP std::vector<unsigned char> _extract_vector();
 
     virtual _ASYNCRTIMP utility::string_t to_string() const;
@@ -298,12 +318,11 @@ protected:
     /// </summary>
     concurrency::streams::ostream m_outStream;
 
+    http_headers m_headers;
     bool m_default_outstream;
 
     /// <summary> The TCE is used to signal the availability of the message body. </summary>
     pplx::task_completion_event<utility::size64_t> m_data_available;
-
-    http_headers m_headers;
 };
 
 /// <summary>
@@ -324,17 +343,13 @@ private:
 class _http_response : public http::details::http_msg_base
 {
 public:
-    _http_response() : m_status_code((std::numeric_limits<uint16_t>::max)()), m_error_code(0) { }
+    _http_response() : m_status_code((std::numeric_limits<uint16_t>::max)()) { }
 
-    _http_response(http::status_code code) : m_status_code(code), m_error_code(0) {}
+    _http_response(http::status_code code) : m_status_code(code) {}
 
     http::status_code status_code() const { return m_status_code; } 
 
     void set_status_code(http::status_code code) { m_status_code = code; }
-
-    unsigned long error_code() const { return m_error_code; } 
-
-    void set_error_code(unsigned long code) { m_error_code = code; }
 
     const http::reason_phrase & reason_phrase() const { return m_reason_phrase; }
 
@@ -344,12 +359,10 @@ public:
 
     _http_server_context * _get_server_context() const { return m_server_context.get(); }
 
-    void _set_server_context(std::shared_ptr<details::_http_server_context> server_context) { m_server_context = std::move(server_context); }
+    void _set_server_context(std::unique_ptr<details::_http_server_context> server_context) { m_server_context = std::move(server_context); }
 
 private:
-    std::shared_ptr<_http_server_context> m_server_context;
-
-    unsigned long m_error_code;
+    std::unique_ptr<_http_server_context> m_server_context;
 
     http::status_code m_status_code;
     http::reason_phrase m_reason_phrase;
@@ -357,8 +370,6 @@ private:
 
 } // namespace details
 
-
-#pragma region HTTP response message
 
 /// <summary>
 /// Represents an HTTP response.
@@ -437,30 +448,38 @@ public:
 
     /// <summary>
     /// Generates a string representation of the message, including the body when possible.
+    /// Mainly this should be used for debugging purposes as it has to copy the
+    /// message body and doesn't have excellent performance.
     /// </summary>
     /// <returns>A string representation of this HTTP request.</returns>
+    /// <remarks>Note this function is synchronous and doesn't wait for the
+    /// entire message body to arrive. If the message body has arrived by the time this
+    /// function is called and it is has a textual Content-Type it will be included.
+    /// Otherwise just the headers will be present.</remarks>
     utility::string_t to_string() const { return _m_impl->to_string(); }
 
     /// <summary>
     /// Extracts the body of the response message as a string value, checking that the content type is a MIME text type.
     /// A body can only be extracted once because in some cases an optimization is made where the data is 'moved' out.
     /// </summary>
+    /// <param name="force">If true, ignores the Content-Type header and assumes UTF-8.</param>
     /// <returns>String containing body of the message.</returns>
-    pplx::task<utility::string_t> extract_string() const
+    pplx::task<utility::string_t> extract_string(bool force = false) const
     {
         auto impl = _m_impl;
-        return pplx::create_task(_m_impl->_get_data_available()).then([impl](utility::size64_t) { return impl->_extract_string(); });
+        return pplx::create_task(_m_impl->_get_data_available()).then([impl, force](utility::size64_t) { return impl->_extract_string(force); });
     }
 
     /// <summary>
     /// Extracts the body of the response message into a json value, checking that the content type is application\json.
     /// A body can only be extracted once because in some cases an optimization is made where the data is 'moved' out.
     /// </summary>
+    /// <param name="force">If true, ignores the Content-Type header and assumes UTF-8.</param>
     /// <returns>JSON value from the body of this message.</returns>
-    pplx::task<json::value> extract_json() const
+    pplx::task<json::value> extract_json(bool force = false) const
     {
         auto impl = _m_impl;
-        return pplx::create_task(_m_impl->_get_data_available()).then([impl](utility::size64_t) { return impl->_extract_json(); });
+        return pplx::create_task(_m_impl->_get_data_available()).then([impl, force](utility::size64_t) { return impl->_extract_json(force); });
     }
 
     /// <summary>
@@ -596,22 +615,10 @@ public:
         return pplx::create_task(impl->_get_data_available()).then([impl](utility::size64_t) -> http_response { return http_response(impl); });
     }
 
-    /// <summary>
-    /// Gets the error code of the response. This is used for errors other than HTTP status codes.
-    /// </summary>
-    /// <returns>The error code.</returns>
-    unsigned long error_code() const { return _m_impl->error_code(); }
-
-    /// <summary>
-    /// Sets the error code of the response. This is used for errors other than HTTP status codes.
-    /// </summary>
-    /// <param name="code">The error code</param>
-    void set_error_code(unsigned long code) const { _m_impl->set_error_code(code); }
-
     std::shared_ptr<http::details::_http_response> _get_impl() const { return _m_impl; }
 
     http::details::_http_server_context * _get_server_context() const { return _m_impl->_get_server_context(); }
-    void _set_server_context(std::shared_ptr<http::details::_http_server_context> server_context) { _m_impl->_set_server_context(std::move(server_context)); }
+    void _set_server_context(std::unique_ptr<http::details::_http_server_context> server_context) { _m_impl->_set_server_context(std::move(server_context)); }
 
 private:
 
@@ -620,11 +627,8 @@ private:
     {
     }
 
-private:
     std::shared_ptr<http::details::_http_response> _m_impl;
 };
-
-#pragma endregion
 
 namespace details {
 /// <summary>
@@ -638,13 +642,15 @@ public:
 
     _ASYNCRTIMP _http_request(http::method mtd);
 
-    _ASYNCRTIMP _http_request(std::shared_ptr<http::details::_http_server_context> server_context);
+    _ASYNCRTIMP _http_request(std::unique_ptr<http::details::_http_server_context> server_context);
 
-    virtual ~_http_request() { }
+    virtual ~_http_request() {}
 
     http::method &method() { return m_method; }
 
     uri &request_uri() { return m_uri; }
+
+    _ASYNCRTIMP uri absolute_uri() const;
 
     _ASYNCRTIMP uri relative_uri() const;
 
@@ -684,25 +690,29 @@ public:
 
     http::details::_http_server_context * _get_server_context() const { return m_server_context.get(); }
 
-    void _set_server_context(std::shared_ptr<http::details::_http_server_context> server_context) { m_server_context = std::move(server_context); }
+    void _set_server_context(std::unique_ptr<http::details::_http_server_context> server_context) { m_server_context = std::move(server_context); }
 
     void _set_listener_path(const utility::string_t &path) { m_listener_path = path; }
+
+    void _set_base_uri(http::uri base_uri) { m_base_uri = std::move(base_uri); }
 
 private:
 
     // Actual initiates sending the response, without checking if a response has already been sent.
     pplx::task<void> _reply_impl(http_response response);
 
+    http::method m_method;
+
     // Tracks whether or not a response has already been started for this message.
     pplx::details::atomic_long m_initiated_response;
 
+    std::unique_ptr<http::details::_http_server_context> m_server_context;
+
     pplx::cancellation_token m_cancellationToken;
 
-    http::method m_method;
-
+    http::uri m_base_uri;
     http::uri m_uri;
     utility::string_t m_listener_path;
-    std::shared_ptr<http::details::_http_server_context> m_server_context;
 
     concurrency::streams::ostream m_response_stream;
 
@@ -713,8 +723,6 @@ private:
 
 
 }  // namespace details
-
-#pragma region HTTP Request
 
 /// <summary>
 /// Represents an HTTP request.
@@ -791,6 +799,15 @@ public:
     uri relative_uri() const { return _m_impl->relative_uri(); }
 
     /// <summary>
+    /// Get an absolute URI with scheme, host, port, path, query, and fragment part of
+    /// the request message.
+    /// </summary>
+    /// <remarks>Absolute URI is only valid after this http_request object has been passed
+    /// to http_client::request().
+    /// </remarks>
+    uri absolute_uri() const { return _m_impl->absolute_uri(); }
+
+    /// <summary>
     /// Gets a reference to the headers of the response message.
     /// </summary>
     /// <returns>HTTP headers for this response.</returns>
@@ -812,22 +829,24 @@ public:
     /// Extract the body of the request message as a string value, checking that the content type is a MIME text type.
     /// A body can only be extracted once because in some cases an optimization is made where the data is 'moved' out.
     /// </summary>
+    /// <param name="force">If true, ignores the Content-Type header and assumes UTF-8.</param>
     /// <returns>String containing body of the message.</returns>
-    pplx::task<utility::string_t> extract_string()
+    pplx::task<utility::string_t> extract_string(bool force = false)
     {
         auto impl = _m_impl;
-        return pplx::create_task(_m_impl->_get_data_available()).then([impl](utility::size64_t) { return impl->_extract_string(); });
+        return pplx::create_task(_m_impl->_get_data_available()).then([impl, force](utility::size64_t) { return impl->_extract_string(force); });
     }
 
     /// <summary>
     /// Extracts the body of the request message into a json value, checking that the content type is application\json.
     /// A body can only be extracted once because in some cases an optimization is made where the data is 'moved' out.
     /// </summary>
+    /// <param name="force">If true, ignores the Content-Type header and assumes UTF-8.</param>
     /// <returns>JSON value from the body of this message.</returns>
-    pplx::task<json::value> extract_json() const
+    pplx::task<json::value> extract_json(bool force = false) const
     {
         auto impl = _m_impl;
-        return pplx::create_task(_m_impl->_get_data_available()).then([impl](utility::size64_t) { return impl->_extract_json(); });
+        return pplx::create_task(_m_impl->_get_data_available()).then([impl, force](utility::size64_t) { return impl->_extract_json(force); });
     }
 
     /// <summary>
@@ -977,9 +996,6 @@ public:
     ///    progress: the number of bytes that have been processed so far.
     /// </param>
     /// <remarks>
-    ///   **EXPERIMENTAL**
-    ///   This function is subject to change based on user feedback.
-    ///
     ///   This function will be called at least once for upload and at least once for
     ///   the download body, unless there is some exception generated. An HTTP message with an error
     ///   code is not an exception. This means, that even if there is no body, the progress handler
@@ -1103,8 +1119,14 @@ public:
 
     /// <summary>
     /// Generates a string representation of the message, including the body when possible.
+    /// Mainly this should be used for debugging purposes as it has to copy the
+    /// message body and doesn't have excellent performance.
     /// </summary>
     /// <returns>A string representation of this HTTP request.</returns>
+    /// <remarks>Note this function is synchronous and doesn't wait for the
+    /// entire message body to arrive. If the message body has arrived by the time this
+    /// function is called and it is has a textual Content-Type it will be included.
+    /// Otherwise just the headers will be present.</remarks>
     utility::string_t to_string() const { return _m_impl->to_string(); }
 
     /// <summary>
@@ -1120,8 +1142,8 @@ public:
     /// <summary>
     /// These are used for the initial creation of the HTTP request.
     /// </summary>
-    static http_request _create_request(std::shared_ptr<http::details::_http_server_context> server_context) { return http_request(std::move(server_context)); }
-    void _set_server_context(std::shared_ptr<http::details::_http_server_context> server_context) { _m_impl->_set_server_context(std::move(server_context)); }
+    static http_request _create_request(std::unique_ptr<http::details::_http_server_context> server_context) { return http_request(std::move(server_context)); }
+    void _set_server_context(std::unique_ptr<http::details::_http_server_context> server_context) { _m_impl->_set_server_context(std::move(server_context)); }
 
     void _set_listener_path(const utility::string_t &path) { _m_impl->_set_listener_path(path); }
 
@@ -1137,11 +1159,16 @@ public:
         return _m_impl->cancellation_token();
     }
 
+    void _set_base_uri(http::uri base_uri)
+    {
+        _m_impl->_set_base_uri(std::move(base_uri));
+    }
+
 private:
     friend class http::details::_http_request;
     friend class http::client::http_client;
 
-    http_request(std::shared_ptr<http::details::_http_server_context> server_context) : _m_impl(std::shared_ptr<details::_http_request>(new details::_http_request(std::move(server_context)))) {}
+    http_request(std::unique_ptr<http::details::_http_server_context> server_context) : _m_impl(std::make_shared<details::_http_request>(std::move(server_context))) {}
     http_request(std::shared_ptr<http::details::_http_request> message) : _m_impl(message) {}
 
     /// <summary>
@@ -1156,8 +1183,6 @@ private:
 
     std::shared_ptr<http::details::_http_request> _m_impl;
 };
-
-#pragma endregion
 
 /// <summary>
 /// HTTP client handler class, used to represent an HTTP pipeline stage.
@@ -1252,6 +1277,7 @@ public:
     {
         
     }
+
     /// <summary>
     /// Create an http pipeline that consists of a linear chain of stages
     /// </summary>
@@ -1308,8 +1334,6 @@ private:
     http_pipeline(std::shared_ptr<http_pipeline_stage> last) : m_last_stage(last) 
     {
     }
-
-private:
 
     // The vector of pipeline stages.
     std::vector<std::shared_ptr<http_pipeline_stage>> m_stages;

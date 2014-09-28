@@ -59,10 +59,19 @@ namespace pplx = Concurrency;
 #include "cpprest/basic_types.h"
 #include "cpprest/asyncrt_utils.h"
 
+#if !defined(CPPREST_TARGET_XP) && !defined(_PHONE8_)
+#include "cpprest/oauth1.h"
+#endif
+
+#include "cpprest/oauth2.h"
+
+/// The web namespace contains functionality common to multiple protocols like HTTP and WebSockets.
 namespace web 
 {
+/// Declarations and functionality for the HTTP protocol.
 namespace http
 {
+/// HTTP client side library.
 namespace client
 {
 
@@ -92,17 +101,53 @@ public:
     http_client_config() : 
         m_guarantee_order(false),
         m_timeout(utility::seconds(30)),
-        m_chunksize(64 * 1024)
+        m_chunksize(0)
 #if !defined(__cplusplus_winrt)
         , m_validate_certificates(true)
 #endif
         , m_set_user_nativehandle_options([](native_handle)->void{})
-#ifdef _MS_WINDOWS
-#if !defined(__cplusplus_winrt)
+#if defined(_MS_WINDOWS) && !defined(__cplusplus_winrt)
         , m_buffer_request(false)
 #endif
-#endif
     {
+    }
+
+#if !defined(CPPREST_TARGET_XP) && !defined(_PHONE8_)
+    /// <summary>
+    /// Get OAuth 1.0 configuration.
+    /// </summary>
+    /// <returns>Shared pointer to OAuth 1.0 configuration.</returns>
+    const std::shared_ptr<oauth1::experimental::oauth1_config> oauth1() const
+    {
+        return m_oauth1;
+    }
+
+    /// <summary>
+    /// Set OAuth 1.0 configuration.
+    /// </summary>
+    /// <param name="config">OAuth 1.0 configuration to set.</param>
+    void set_oauth1(oauth1::experimental::oauth1_config config)
+    {
+        m_oauth1 = std::make_shared<oauth1::experimental::oauth1_config>(std::move(config));
+    }
+#endif
+
+    /// <summary>
+    /// Get OAuth 2.0 configuration.
+    /// </summary>
+    /// <returns>Shared pointer to OAuth 2.0 configuration.</returns>
+    const std::shared_ptr<oauth2::experimental::oauth2_config> oauth2() const
+    {
+        return m_oauth2;
+    }
+
+    /// <summary>
+    /// Set OAuth 2.0 configuration.
+    /// </summary>
+    /// <param name="config">OAuth 2.0 configuration to set.</param>
+    void set_oauth2(oauth2::experimental::oauth2_config config)
+    {
+        m_oauth2 = std::make_shared<oauth2::experimental::oauth2_config>(std::move(config));
     }
 
     /// <summary>
@@ -118,9 +163,9 @@ public:
     /// Set the web proxy object
     /// </summary>
     /// <param name="proxy">A reference to the web proxy object.</param>
-    void set_proxy(const web_proxy& proxy)
+    void set_proxy(web_proxy proxy)
     {
-        m_proxy = proxy;
+        m_proxy = std::move(proxy);
     }
 
     /// <summary>
@@ -183,7 +228,7 @@ public:
     /// <returns>The internal buffer size used by the http client when sending and receiving data from the network.</returns>
     size_t chunksize() const
     {
-        return m_chunksize;
+        return m_chunksize == 0 ? 64 * 1024 : m_chunksize;
     }
 
     /// <summary>
@@ -194,6 +239,16 @@ public:
     void set_chunksize(size_t size)
     {
         m_chunksize = size;
+    }
+
+    /// <summary>
+    /// Returns true if the default chunk size is in use.
+    /// <remarks>If true, implementations are allowed to choose whatever size is best.</remarks>
+    /// </summary>
+    /// <returns>True if default, false if set by user.</returns>
+    bool is_default_chunksize() const
+    {
+        return m_chunksize == 0;
     }
 
 #if !defined(__cplusplus_winrt)
@@ -209,7 +264,7 @@ public:
     /// <summary>
     /// Sets the server certificate validation property.
     /// </summary>
-    /// <param name="validate_cert">False to turn ignore all server certificate validation errors, true otherwise.</param>
+    /// <param name="validate_certs">False to turn ignore all server certificate validation errors, true otherwise.</param>
     /// <remarks>Note ignoring certificate errors can be dangerous and should be done with caution.</remarks>
     void set_validate_certificates(bool validate_certs)
     {
@@ -233,6 +288,7 @@ public:
     /// If true, in cases where the request body/stream doesn't support seeking the request data will be buffered.
     /// This can help in situations where an authentication challenge might be expected.
     /// </summary>
+    /// <param name="buffer_request">True to turn on buffer, false otherwise.</param>
     /// <remarks>Please note there is a performance cost due to copying the request data.</remarks>
     void set_buffer_request(bool buffer_request)
     {
@@ -251,34 +307,33 @@ public:
     }
 
 private:
+#if !defined(CPPREST_TARGET_XP) && !defined(_PHONE8_)
+    std::shared_ptr<oauth1::experimental::oauth1_config> m_oauth1;
+#endif // !defined(CPPREST_TARGET_XP) && !defined(_PHONE8_)
+
+    std::shared_ptr<oauth2::experimental::oauth2_config> m_oauth2;
     web_proxy m_proxy;
     http::client::credentials m_credentials;
     // Whether or not to guarantee ordering, i.e. only using one underlying TCP connection.
     bool m_guarantee_order;
 
-    // IXmlHttpRequest2 doesn't allow configuration of certificate verification.
-#if !defined(__cplusplus_winrt)
-    bool m_validate_certificates;
-#endif
+    utility::seconds m_timeout;
+    size_t m_chunksize;
 
-#ifdef _MS_WINDOWS
 #if !defined(__cplusplus_winrt)
-    bool m_buffer_request;
-#endif
+    // IXmlHttpRequest2 doesn't allow configuration of certificate verification.
+    bool m_validate_certificates;
 #endif
 
     std::function<void(native_handle)> m_set_user_nativehandle_options;
 
-    utility::seconds m_timeout;
-    size_t m_chunksize;
-
-#ifdef _MS_WINDOWS
-#ifdef __cplusplus_winrt
+#if defined(_MS_WINDOWS) && defined(__cplusplus_winrt)
     friend class details::winrt_client;
-#else
+#elif defined(_MS_WINDOWS)
+    bool m_buffer_request;
+
     friend class details::winhttp_client;
-#endif // __cplusplus_winrt  
-#endif // _MS_WINDOWS
+#endif // defined(_MS_WINDOWS) && defined(__cplusplus_winrt)
 
     /// <summary>
     /// Invokes a user callback to allow for customization of the requst
@@ -322,10 +377,7 @@ public:
     /// <returns>
     /// A base uri initialized in constructor
     /// </return>
-    const uri& base_uri() const
-    {
-        return _base_uri;
-    }
+    _ASYNCRTIMP const uri& base_uri() const;
 
     /// <summary>
     /// Get client configuration object
@@ -339,7 +391,7 @@ public:
     /// <param name="handler">A function object representing the pipeline stage.</param>
     void add_handler(std::function<pplx::task<http_response>(http_request, std::shared_ptr<http::http_pipeline_stage>)> handler)
     {
-        m_pipeline->append(std::make_shared< ::web::http::details::function_pipeline_wrapper>(handler));
+        m_pipeline->append(std::make_shared<::web::http::details::function_pipeline_wrapper>(handler));
     }
 
     /// <summary>
@@ -538,11 +590,8 @@ private:
     void build_pipeline(uri base_uri, http_client_config client_config);
     
     std::shared_ptr<::web::http::http_pipeline> m_pipeline;
-
-    uri _base_uri;
 };
 
-} // namespace client
-}} // namespace web::http
+}}} // namespaces
 
 #endif  /* _CASA_HTTP_CLIENT_H */

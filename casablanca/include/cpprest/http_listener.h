@@ -37,19 +37,14 @@
 
 #include "cpprest/http_msg.h"
 
-namespace web { 
-
-/// <summary>
-/// Declaration to avoid making a dependency on IISHost.
-/// </summary>
-namespace iis_host
-{
-    class http_iis_receiver;
-}
-
+namespace web 
+{ 
 namespace http
 {
-namespace experimental {
+/// HTTP listener is currently in beta.
+namespace experimental 
+{
+/// HTTP server side library.
 namespace listener
 {
 
@@ -144,6 +139,7 @@ public:
 
     http_listener_impl()
         : m_closed(true)
+        , m_close_task(pplx::task_from_result())
     {
     }
 
@@ -157,7 +153,7 @@ public:
     /// Handler for all requests. The HTTP host uses this to dispatch a message to the pipeline.
     /// </summary>
     /// <remarks>Only HTTP server implementations should call this API.</remarks>
-    _ASYNCRTIMP pplx::task<http::http_response> handle_request(http::http_request msg);
+    _ASYNCRTIMP void handle_request(http::http_request msg);
 
     const http::uri & uri() const { return m_uri; }
 
@@ -181,6 +177,7 @@ private:
 
     // Used to record that the listener is closed.
     bool m_closed;
+    pplx::task<void> m_close_task;
 };
 
 } // namespace details

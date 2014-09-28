@@ -30,12 +30,6 @@
 namespace web 
 {
 
-#pragma region Validation
-
-#pragma endregion
-
-#pragma region Appending
-
 uri_builder &uri_builder::append_path(const utility::string_t &path, bool is_encode)
 {
     if(path.empty() || path == _XPLATSTR("/"))
@@ -80,7 +74,7 @@ uri_builder &uri_builder::append_query(const utility::string_t &query, bool is_e
         return *this;
     }
     
-    auto encoded_query = is_encode ? uri::encode_uri(query, uri::components::path) : query;
+    auto encoded_query = is_encode ? uri::encode_uri(query, uri::components::query) : query;
     auto thisQuery = this->query();
     if (thisQuery.empty())
     {
@@ -111,11 +105,6 @@ uri_builder &uri_builder::append(const http::uri &relative_uri)
     return *this;
 }
 
-#pragma endregion
-
-#pragma region URI Creation
-
-
 utility::string_t uri_builder::to_string()
 {
     return to_uri().to_string();
@@ -130,8 +119,6 @@ bool uri_builder::is_valid()
 {
     return uri::validate(m_uri.join());
 }
-
-#pragma endregion
 
 } // namespace web
 

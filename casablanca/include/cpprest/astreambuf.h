@@ -52,11 +52,13 @@ namespace concurrency = Concurrency;
 #endif
 #endif
 
+#if defined(_MSC_VER)
 #pragma warning(push)
 // Suppress unreferenced formal parameter warning as they are required for documentation.
 #pragma warning(disable : 4100)
 // Suppress no-side-effect recursion warning, since it is safe and template-binding-dependent.
 #pragma warning(disable : 4718)
+#endif
 
 #ifndef _MS_WINDOWS
 // TFS 579628 - 1206: figure out how to avoid having this specialization for Linux (beware of 64-bit Linux)
@@ -96,7 +98,10 @@ namespace std {
 }
 #endif // _MS_WINDOWS
 
-namespace Concurrency { namespace streams
+namespace Concurrency 
+{ 
+/// Library for asychronous streams.
+namespace streams
 {
     /// <summary>
     /// Extending the standard char_traits type with one that adds values and types
@@ -663,7 +668,7 @@ namespace Concurrency { namespace streams
             _commit(count);
             m_alloced = false;
         }
-#pragma region dependencies
+
     public:
         virtual bool can_seek() const = 0;
         virtual bool has_size() const = 0;
@@ -708,8 +713,6 @@ namespace Concurrency { namespace streams
             m_stream_can_write = false;
             return pplx::task_from_result();
         }
-
-#pragma endregion
 
     protected:
         streambuf_state_manager(std::ios_base::openmode mode)
@@ -900,8 +903,6 @@ namespace Concurrency { namespace streams
 
             return m_buffer;
         }
-
-#pragma region Function forwarding
 
         /// <summary>
         /// <c>can_read</c> is used to determine whether a stream buffer will support read operations (get).
@@ -1192,8 +1193,6 @@ namespace Concurrency { namespace streams
             return get_base()->exception();
         }
 
-#pragma endregion
-
     private:
         std::shared_ptr<details::basic_streambuf<_CharType>> m_buffer;
 
@@ -1201,4 +1200,6 @@ namespace Concurrency { namespace streams
 
 }}
 
+#if defined(_MSC_VER)
 #pragma warning(pop) // 4100
+#endif

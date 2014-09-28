@@ -49,7 +49,6 @@
 // for UINT_PTR types used in winsock APIs
 #ifdef _MS_WINDOWS
 #include <BaseTsd.h>
-typedef UINT_PTR SOCKET;
 #endif
 
 // for guids, used in comm.h
@@ -66,20 +65,9 @@ typedef UINT_PTR SOCKET;
 
 #define UNREACHABLE __assume(0)
 
-// for winhttp.h
-typedef void * HINTERNET;
-
-// for file io (windows.h)
-typedef void * HANDLE;
-
-#ifdef _MS_WINDOWS
-typedef void* FILE_HANDLE;
-#else
 #ifdef __clang__
 #include <cstdio>
 #endif
-typedef FILE* FILE_HANDLE;
-#endif
 
-// for http client and others that use overlapped IO delegates (windef.h)
-#define CALLBACK __stdcall
+// Define the _NOT_PHONE8_ as non-windows or windows desktop without arm configuration or windows store app or windows phone8.1
+#define _NOT_PHONE8_ !defined(WINAPI_FAMILY) || (WINAPI_FAMILY == WINAPI_FAMILY_DESKTOP_APP && !defined(_M_ARM)) || WINAPI_FAMILY == WINAPI_FAMILY_APP || (WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP && _WIN32_WINNT == _WIN32_WINNT_WINBLUE)

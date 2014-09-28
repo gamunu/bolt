@@ -1,12 +1,12 @@
 /***
 * ==++==
 *
-* Copyright (c) Microsoft Corporation. All rights reserved. 
+* Copyright (c) Microsoft Corporation. All rights reserved.
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
 * You may obtain a copy of the License at
 * http://www.apache.org/licenses/LICENSE-2.0
-* 
+*
 * Unless required by applicable law or agreed to in writing, software
 * distributed under the License is distributed on an "AS IS" BASIS,
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -30,7 +30,7 @@
 #if defined(_MSC_VER) && (_MSC_VER >= 1800)
 #include <ppltasks.h>
 namespace pplx = Concurrency;
-#else 
+#else
 #include "pplx/pplxtasks.h"
 #endif
 
@@ -40,6 +40,8 @@ namespace pplx = Concurrency;
 #include <vector>
 #include <cstdint>
 #include <system_error>
+#include <random>
+#include <locale.h>
 
 #if !defined(_MS_WINDOWS) || (_MSC_VER >= 1700)
 #include <chrono>
@@ -47,29 +49,19 @@ namespace pplx = Concurrency;
 
 #ifndef _MS_WINDOWS
 #include <boost/algorithm/string.hpp>
+#ifndef ANDROID // CodePlex 269
+#include <xlocale.h>
+#endif
 #endif
 
+/// Various utilities for string conversions and date and time manipulation.
 namespace utility
 {
 
-#if  !defined(_MS_WINDOWS) || (_MSC_VER >= 1700) // Post VS10 and Linux
+// Left over from VS2010 support, remains to avoid breaking.
 typedef std::chrono::seconds seconds;
-#else // VS10
-/// <summary>
-/// A type used to represent timeouts for Azure storage APIs
-/// </summary>
-// The chrono header is not present on Visual Studio with versions < 1700 so we define a 'seconds' type for timeouts
-class seconds
-{
-public:
-    explicit seconds(__int64 time = 0): m_count(time) {}
-    __int64 count() const { return m_count; }
 
-private:
-    __int64 m_count;
-};
-#endif
-
+/// Functions for converting to/from std::chrono::seconds to xml string.
 namespace timespan
 {
     /// <summary>
@@ -85,6 +77,7 @@ namespace timespan
     _ASYNCRTIMP utility::seconds __cdecl xml_duration_to_seconds(utility::string_t timespanString);
 }
 
+/// Functions for string conversions.
 namespace conversions
 {
     /// <summary>
@@ -171,6 +164,35 @@ namespace conversions
 namespace details
 {
     /// <summary>
+    /// Cross platform RAII container for setting thread local locale.
+    /// </summary>
+    class scoped_c_thread_locale
+    {
+    public:
+        _ASYNCRTIMP scoped_c_thread_locale();
+        _ASYNCRTIMP ~scoped_c_thread_locale();
+
+#ifndef ANDROID // CodePlex 269
+#ifdef _MS_WINDOWS
+        typedef _locale_t xplat_locale;
+#else
+        typedef locale_t xplat_locale;
+#endif
+
+        static _ASYNCRTIMP xplat_locale __cdecl c_locale();
+#endif
+    private:
+#ifdef _MS_WINDOWS
+        std::string m_prevLocale;
+        int m_prevThreadSetting;
+#elif !defined(ANDROID)
+        locale_t m_prevLocale;        
+#endif
+        scoped_c_thread_locale(const scoped_c_thread_locale &);
+        scoped_c_thread_locale & operator=(const scoped_c_thread_locale &);
+    };
+
+    /// <summary>
     /// Our own implementation of alpha numeric instead of std::isalnum to avoid
     /// taking global lock for performance reasons.
     /// </summary>
@@ -220,13 +242,6 @@ namespace details
 #endif
     }
 
-    // Turn const_iterator into an iterator
-    template <typename Container, typename ConstIterator>
-    typename Container::iterator remove_iterator_constness(Container& c, ConstIterator it)
-    {
-        return c.erase(it, it);
-    }
-
 #ifdef _MS_WINDOWS
 
 /// <summary>
@@ -235,11 +250,11 @@ namespace details
 class windows_category_impl : public std::error_category
 {
 public:
-    virtual const char *name() const { return "windows"; }
+    virtual const char *name() const _noexcept { return "windows"; }
 
-    _ASYNCRTIMP virtual std::string message(int errorCode) const;
+    _ASYNCRTIMP virtual std::string message(int errorCode) const _noexcept;
 
-    _ASYNCRTIMP virtual std::error_condition default_error_condition(int errorCode) const;
+    _ASYNCRTIMP virtual std::error_condition default_error_condition(int errorCode) const _noexcept;
 };
 
 /// <summary>
@@ -304,6 +319,28 @@ public:
     /// Returns the current UTC time. 
     /// </summary>
     static _ASYNCRTIMP datetime __cdecl utc_now();
+
+    /// <summary>
+    /// An invalid UTC timestamp value.
+    /// </summary>
+    enum:interval_type { utc_timestamp_invalid = static_cast<interval_type>(-1) };
+
+    /// <summary>
+    /// Returns seconds since Unix/POSIX time epoch at 01-01-1970 00:00:00.
+    /// If time is before epoch, utc_timestamp_invalid is returned.
+    /// </summary>
+    static interval_type utc_timestamp()
+    {
+        const auto seconds = utc_now().to_interval() / _secondTicks;
+        if (seconds >= 11644473600LL)
+        {
+            return seconds - 11644473600LL;
+        }
+        else
+        {
+            return utc_timestamp_invalid;
+        }
+    }
 
     datetime() : m_interval(0)
     {
@@ -447,5 +484,51 @@ inline int operator- (datetime t1, datetime t2)
     
     return static_cast<int>(diff);
 }
+
+/// <summary>
+/// Nonce string generator class.
+/// </summary>
+class nonce_generator
+{
+public:
+
+    /// <summary>
+    /// Define default nonce length.
+    /// </summary>
+    enum { default_length = 32 };
+
+    /// <summary>
+    /// Nonce generator constructor.
+    /// </summary>
+    /// <param name="length">Length of the generated nonce string.</param>
+    nonce_generator(int length=default_length) :
+        m_random(static_cast<unsigned int>(utility::datetime::utc_timestamp())),
+        m_length(length)
+    {}
+
+    /// <summary>
+    /// Generate a nonce string containing random alphanumeric characters (A-Za-z0-9).
+    /// Length of the generated string is set by length().
+    /// </summary>
+    /// <returns>The generated nonce string.</returns>
+    _ASYNCRTIMP utility::string_t generate();
+
+    /// <summary>
+    /// Get length of generated nonce string.
+    /// </summary>
+    /// <returns>Nonce string length.</returns>
+    int length() const { return m_length; }
+
+    /// <summary>
+    /// Set length of the generated nonce string.
+    /// </summary>
+    /// <param name="length">Lenght of nonce string.</param>
+    void set_length(int length) { m_length = length; }
+
+private:
+    static const utility::string_t c_allowed_chars;
+    std::mt19937 m_random;
+    int m_length;
+};
 
 } // namespace utility;

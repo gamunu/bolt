@@ -1,12 +1,12 @@
 /***
 * ==++==
 *
-* Copyright (c) Microsoft Corporation. All rights reserved. 
+* Copyright (c) Microsoft Corporation. All rights reserved.
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
 * You may obtain a copy of the License at
 * http://www.apache.org/licenses/LICENSE-2.0
-* 
+*
 * Unless required by applicable law or agreed to in writing, software
 * distributed under the License is distributed on an "AS IS" BASIS,
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -37,10 +37,11 @@
 
 #include "cpprest/xxpublic.h"
 
+#if _NOT_PHONE8_
 #if defined(_MSC_VER) && (_MSC_VER >= 1800)
 #include <ppltasks.h>
 namespace pplx = Concurrency;
-#else 
+#else
 #include "pplx/pplxtasks.h"
 #endif
 
@@ -51,12 +52,17 @@ namespace pplx = Concurrency;
 #include "cpprest/asyncrt_utils.h"
 #include "cpprest/ws_msg.h"
 
-namespace web 
+namespace web
 {
-namespace experimental 
+/// WebSocket client is currently in beta.
+namespace experimental
 {
-namespace web_sockets
+// In the past namespace was accidentally called 'web_sockets'. To avoid breaking code
+// alias it. At our next major release this should be deleted.
+namespace web_sockets = websockets;
+namespace websockets
 {
+/// WebSocket client side library.
 namespace client
 {
 
@@ -80,8 +86,57 @@ enum class websocket_close_status
 class websocket_client_config
 {
 public:
-    websocket_client_config()
+
+    /// <summary>
+    /// Creates a websocket client configuration with default settings.
+    /// </summary>
+    websocket_client_config() {}
+
+    /// <summary>
+    /// Copy constructor.
+    /// </summary>
+    websocket_client_config(const websocket_client_config &other) :
+        m_proxy(other.m_proxy),
+        m_credentials(other.m_credentials),
+        m_headers(other.m_headers)
     {}
+
+    /// <summary>
+    /// Move constructor.
+    /// </summary>
+    websocket_client_config(websocket_client_config &&other) :
+        m_proxy(std::move(other.m_proxy)),
+        m_credentials(std::move(other.m_credentials)),
+        m_headers(std::move(other.m_headers))
+    {}
+
+    /// <summary>
+    /// Assignment operator.
+    /// </summary>
+    websocket_client_config &operator=(const websocket_client_config &other)
+    {
+        if (this != &other)
+        {
+            m_proxy = other.m_proxy;
+            m_credentials = other.m_credentials;
+            m_headers = other.m_headers;
+        }
+        return *this;
+    }
+
+    /// <summary>
+    /// Move assignment operator.
+    /// </summary>
+    websocket_client_config &operator=(websocket_client_config &&other)
+    {
+        if (this != &other)
+        {
+            m_proxy = std::move(other.m_proxy);
+            m_credentials = std::move(other.m_credentials);
+            m_headers = std::move(other.m_headers);
+        }
+        return  *this;
+    }
 
     /// <summary>
     /// Get the web proxy object
@@ -96,9 +151,9 @@ public:
     /// Set the web proxy object
     /// </summary>
     /// <param name="proxy">The web proxy object.</param>
-    void set_proxy(web_proxy proxy)
+    void set_proxy(const web_proxy &proxy)
     {
-        m_proxy = std::move(proxy);
+        m_proxy = proxy;
     }
 
     /// <summary>
@@ -114,9 +169,9 @@ public:
     /// Set the client credentials
     /// </summary>
     /// <param name="cred">The client credentials.</param>
-    void set_credentials(web::credentials cred)
+    void set_credentials(const web::credentials &cred)
     {
-        m_credentials = std::move(cred);
+        m_credentials = cred;
     }
 
     /// <summary>
@@ -133,6 +188,21 @@ public:
     /// </summary>
     /// <returns>HTTP headers.</returns>
     const web::http::http_headers &headers() const { return m_headers; }
+
+    /// <summary>
+    /// Adds a subprotocol to the request headers.
+    /// </summary>
+    /// <param name="name">The name of the subprotocol.</param>
+    /// <remark>If additional subprotocols have already been specified, the new one will just be added.</remarks>
+    _ASYNCRTIMP void add_subprotocol(const ::utility::string_t &name);
+
+    /// <summary>
+    /// Gets list of the specified subprotocols.
+    /// </summary>
+    /// <returns>Vector of all the subprotocols </returns>
+    /// <remarks>If you want all the subprotocols in a comma separated string
+    /// they can be directly looked up in the headers using 'Sec-WebSocket-Protocol'.</remarks>
+    _ASYNCRTIMP std::vector<::utility::string_t> subprotocols() const;
 
 private:
     web::web_proxy m_proxy;
@@ -151,29 +221,49 @@ public:
     /// Creates an <c>websocket_exception</c> with just a string message and no error code.
     /// </summary>
     /// <param name="whatArg">Error message string.</param>
-    websocket_exception(const utility::string_t &whatArg) 
+    websocket_exception(const utility::string_t &whatArg)
         : m_msg(utility::conversions::to_utf8string(whatArg)) {}
+
+#ifdef _MS_WINDOWS
+    /// <summary>
+    /// Creates an <c>websocket_exception</c> with just a string message and no error code.
+    /// </summary>
+    /// <param name="whatArg">Error message string.</param>
+    websocket_exception(std::string whatArg) : m_msg(std::move(whatArg)) {}
+#endif
 
     /// <summary>
     /// Creates a <c>websocket_exception</c> from a error code using the current platform error category.
     /// The message of the error code will be used as the what() string message.
     /// </summary>
     /// <param name="errorCode">Error code value.</param>
-    websocket_exception(int errorCode) 
+    websocket_exception(int errorCode)
         : m_errorCode(utility::details::create_error_code(errorCode))
     {
         m_msg = m_errorCode.message();
     }
 
     /// <summary>
-    /// Creates a <c>websocket_exception</c> from a error code using the current platform error category. 
+    /// Creates a <c>websocket_exception</c> from a error code using the current platform error category.
     /// </summary>
     /// <param name="errorCode">Error code value.</param>
     /// <param name="whatArg">Message to use in what() string.</param>
-    websocket_exception(int errorCode, const utility::string_t &whatArg) 
+    websocket_exception(int errorCode, const utility::string_t &whatArg)
         : m_errorCode(utility::details::create_error_code(errorCode)),
           m_msg(utility::conversions::to_utf8string(whatArg))
     {}
+
+#ifdef _MS_WINDOWS
+    /// <summary>
+    /// Creates a <c>websocket_exception</c> from a error code and string message.
+    /// </summary>
+    /// <param name="errorCode">Error code value.</param>
+    /// <param name="whatArg">Message to use in what() string.</param>
+    websocket_exception(int errorCode, std::string whatArg)
+        : m_errorCode(utility::details::create_error_code(errorCode)),
+        m_msg(std::move(whatArg))
+    {}
+#endif
 
     /// <summary>
     /// Creates a <c>websocket_exception</c> from a error code and category. The message of the error code will be used
@@ -186,62 +276,70 @@ public:
         m_msg = m_errorCode.message();
     }
 
+    /// <summary>
+    /// Destroys the <c>websocket_exception</c> object.
+    /// </summary>
     ~websocket_exception() _noexcept {}
 
+    /// <summary>
+    /// Gets a string identifying the cause of the exception.
+    /// </summary>
+    /// <returns>A null terminated character string.</returns>
     const char* what() const _noexcept
     {
         return m_msg.c_str();
     }
 
-    const std::error_code & error_code() const
+    /// <summary>
+    /// Gets the underlying error code for the cause of the exception.
+    /// </summary>
+    /// <returns>The <c>error_code</c> object associated with the exception.</returns>
+    const std::error_code & error_code() const _noexcept
     {
         return m_errorCode;
     }
 
 private:
-    std::string m_msg;
     std::error_code m_errorCode;
+    std::string m_msg;
 };
 
 namespace details
 {
-class winrt_client;
-class ws_desktop_client;
 
 // Interface to be implemented by the websocket client implementations.
 class _websocket_client_impl
 {
 public:
+
+    _websocket_client_impl(websocket_client_config config) :
+        m_config(std::move(config)) {}
+
     virtual ~_websocket_client_impl() _noexcept {}
 
     virtual pplx::task<void> connect() = 0;
 
-    virtual pplx::task<void> send(websocket_outgoing_message msg) = 0;
+    virtual pplx::task<void> send(websocket_outgoing_message &msg) = 0;
 
-    virtual pplx::task<websocket_incoming_message> receive() = 0; 
+    virtual pplx::task<websocket_incoming_message> receive() = 0;
 
     virtual pplx::task<void> close() = 0;
 
     virtual pplx::task<void> close(websocket_close_status close_status, const utility::string_t &close_reason=_XPLATSTR("")) = 0;
 
-    /// <summary>
-    /// Gets the base uri
-    /// </summary>
-    /// <returns>
-    /// A base uri initialized in constructor
-    /// </return>
     const web::uri& uri() const
     {
         return m_uri;
     }
 
-    /// <summary>
-    /// Get client configuration object
-    /// </summary>
-    /// <returns>A reference to the client configuration object.</returns>
+    void set_uri(const web::uri &uri)
+    {
+        m_uri = uri;
+    }
+
     const websocket_client_config& config() const
     {
-        return m_client_config;
+        return m_config;
     }
 
     static void verify_uri(const web::uri& uri)
@@ -267,13 +365,8 @@ public:
     }
 
 protected:
-    _websocket_client_impl(web::uri address, websocket_client_config client_config)
-        : m_uri(std::move(address)), m_client_config(std::move(client_config))
-    {
-    }
-
     web::uri m_uri;
-    websocket_client_config m_client_config;    
+    websocket_client_config m_config;
 };
 }
 
@@ -284,66 +377,60 @@ class websocket_client
 {
 public:
     /// <summary>
-    /// Creates a new websocket_client to connect to the specified uri.
+    ///  Creates a new websocket_client.
     /// </summary>
-    /// <param name="base_uri">A string representation of the base uri to be used for all messages. Must start with either "ws://" or "wss://"</param>
-    _ASYNCRTIMP websocket_client(web::uri base_uri);
+    _ASYNCRTIMP websocket_client();
 
     /// <summary>
-    /// Creates a new websocket_client to connect to the specified uri.
+    ///  Creates a new websocket_client.
     /// </summary>
-    /// <param name="base_uri">A string representation of the base uri to be used for all requests. Must start with either "ws://" or "wss://"</param>
-    /// <param name="client_config">The client configuration object containing the possible configuration options to intitialize the <c>websocket_client</c>. </param>
-    _ASYNCRTIMP websocket_client(web::uri base_uri, websocket_client_config client_config);
+    /// <param name="client_config">The client configuration object containing the possible configuration options to initialize the <c>websocket_client</c>. </param>
+    _ASYNCRTIMP websocket_client(websocket_client_config client_config);
 
     /// <summary>
+    /// Destructor
     /// </summary>
-    ~websocket_client() { }
+    ~websocket_client() _noexcept {}
 
     /// <summary>
-    /// Move constructor.
-    /// </summary>
-    websocket_client(websocket_client &&other) 
-        : m_client(std::move(other.m_client))
-    {
-    }
-
-    /// <summary>
-    /// Move assignment operator.
-    /// </summary>
-    websocket_client &operator=(websocket_client &&other)
-    {
-        if(this != &other)
-        {
-            m_client = std::move(other.m_client);
-        }
-        return *this;
-    }
-
-    /// <summary>
-    /// Connects to the remote network destination. The connect method initiates the websocket handshake with the 
+    /// Connects to the remote network destination. The connect method initiates the websocket handshake with the
     /// remote network destination, takes care of the protocol upgrade request.
     /// </summary>
+    /// <param name="uri">The uri address to connect. </param>
     /// <returns>An asynchronous operation that is completed once the client has successfully connected to the websocket server.</returns>
-    pplx::task<void> connect() { return m_client->connect(); }
+    pplx::task<void> connect(const web::uri &uri)
+    {
+        m_client->verify_uri(uri);
+        m_client->set_uri(uri);
+        return m_client->connect();
+    }
 
     /// <summary>
     /// Sends a websocket message to the server .
     /// </summary>
     /// <returns>An asynchronous operation that is completed once the message is sent.</returns>
-    pplx::task<void> send(websocket_outgoing_message msg) { return m_client->send(msg); } 
+    pplx::task<void> send(websocket_outgoing_message msg)
+    {
+        return m_client->send(msg);
+    }
 
     /// <summary>
     /// Receive a websocket message.
     /// </summary>
     /// <returns>An asynchronous operation that is completed when a message has been received by the client endpoint.</returns>
-    pplx::task<websocket_incoming_message> receive() { return m_client->receive(); }
+    pplx::task<websocket_incoming_message> receive()
+    {
+        return m_client->receive();
+    }
 
     /// <summary>
     /// Closes a websocket client connection, sends a close frame to the server and waits for a close message from the server.
     /// </summary>
     /// <returns>An asynchronous operation that is completed the connection has been successfully closed.</returns>
-    pplx::task<void> close() { return m_client->close(); }
+    pplx::task<void> close()
+    {
+        return m_client->close();
+    }
 
     /// <summary>
     /// Closes a websocket client connection, sends a close frame to the server and waits for a close message from the server.
@@ -352,16 +439,14 @@ public:
     /// <param name="close_reason">While closing an established connection, an endpoint may indicate the reason for closure.</param>
     /// <returns>An asynchronous operation that is completed the connection has been successfully closed.</returns>
     pplx::task<void> close(websocket_close_status close_status, const utility::string_t& close_reason=_XPLATSTR(""))
-    { 
-        return m_client->close(close_status, close_reason); 
+    {
+        return m_client->close(close_status, close_reason);
     }
 
     /// <summary>
     /// Gets the websocket client URI.
     /// </summary>
-    /// <returns>
-    /// A base uri initialized in constructor
-    /// </return>
+    /// <returns>URI connected to.</returns>
     const web::uri& uri() const
     {
         return m_client->uri();
@@ -377,11 +462,11 @@ public:
     }
 
 private:
-
     std::shared_ptr<details::_websocket_client_impl> m_client;
 };
 
 }}}}
 
+#endif  // _NOT_PHONE8_
 #endif
 #endif  /* _CASA_WS_CLIENT_H */

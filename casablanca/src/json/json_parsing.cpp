@@ -1,12 +1,12 @@
 /***
 * ==++==
 *
-* Copyright (c) Microsoft Corporation. All rights reserved. 
+* Copyright (c) Microsoft Corporation. All rights reserved.
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
 * You may obtain a copy of the License at
 * http://www.apache.org/licenses/LICENSE-2.0
-* 
+*
 * Unless required by applicable law or agreed to in writing, software
 * distributed under the License is distributed on an "AS IS" BASIS,
 * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,7 +18,7 @@
 *
 * json_parsing.cpp
 *
-* HTTP Library: JSON parser and writer
+* HTTP Library: JSON parser
 *
 * For the latest on this and related APIs, please see http://casablanca.codeplex.com.
 *
@@ -27,21 +27,25 @@
 
 #include "stdafx.h"
 #include <vector>
+#include <cstdlib>
+#include <array>
 
-#pragma warning(disable : 4127) // allow expressions like while(true) pass 
+#if defined(_MSC_VER)
+#pragma warning(disable : 4127) // allow expressions like while(true) pass
+#endif
 using namespace web;
 using namespace web::json;
 using namespace utility;
 using namespace utility::conversions;
 
-int _hexval [] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 
-                   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-                   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-                    0,  1,  2,  3,  4,  5,  6,  7,  8,  9, -1, -1, -1, -1, -1, -1,
-                   -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-                   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-                   -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1,
-                   -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
+std::array<signed char,128> _hexval = {{ -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                                         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                                         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                                          0,  1,  2,  3,  4,  5,  6,  7,  8,  9, -1, -1, -1, -1, -1, -1,
+                                         -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                                         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                                         -1, 10, 11, 12, 13, 14, 15, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+                                         -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 }};
 
 namespace web {
 namespace json
@@ -54,7 +58,7 @@ namespace details
 //
 
 template <typename Token>
-#ifdef _MS_WINDOWS
+#if defined(_MS_WINDOWS)
     __declspec(noreturn)
 #else
     __attribute__((noreturn))
@@ -66,12 +70,11 @@ void CreateError(const Token &tk, const utility::string_t &message)
     throw web::json::json_exception(os.str().c_str());
 }
 
-    
 template <typename CharType>
 class JSON_Parser
 {
 public:
-    JSON_Parser() 
+    JSON_Parser()
         : m_currentLine(1),
           m_eof(std::char_traits<CharType>::eof()),
           m_currentColumn(1),
@@ -127,6 +130,10 @@ public:
 
     web::json::value ParseValue(typename JSON_Parser<CharType>::Token &first)
     {
+#ifndef _MS_WINDOWS
+        utility::details::scoped_c_thread_locale locale;
+#endif
+
         auto _value = _ParseValue(first);
 #ifdef ENABLE_JSON_VALUE_VISUALIZER
         auto type = _value->type();
@@ -164,29 +171,34 @@ private:
     void CreateToken(typename JSON_Parser<CharType>::Token& tk, typename Token::Kind kind, Location &start)
     {
         tk.kind = kind;
-        tk.start = start; 
+        tk.start = start;
         tk.string_val.clear();
     }
 
     void CreateToken(typename JSON_Parser<CharType>::Token& tk, typename Token::Kind kind)
     {
         tk.kind = kind;
-        tk.start.m_line = m_currentLine; 
-        tk.start.m_column = m_currentColumn; 
+        tk.start.m_line = m_currentLine;
+        tk.start.m_column = m_currentColumn;
         tk.string_val.clear();
     }
 
 protected:
 
     size_t m_currentLine;
+    const typename std::char_traits<CharType>::int_type m_eof;
     size_t m_currentColumn;
     size_t m_currentParsingDepth;
-#ifndef __APPLE__
-    static const size_t maxParsingDepth = 128;
+    
+// On APPLE debug overflow happens around 80.
+// The DEBUG macro is defined in XCode but we don't in our CMakeList
+// so for now we will keep the same on debug and release. In the future
+// this can be increase on release if necessary.
+#if defined(__APPLE__)
+    static const size_t maxParsingDepth = 64;
 #else
-    static const size_t maxParsingDepth = 32;
+    static const size_t maxParsingDepth = 128;
 #endif
-    const typename std::char_traits<CharType>::int_type m_eof;
 };
 
 template <typename CharType>
@@ -211,7 +223,7 @@ template <typename CharType>
 class JSON_StringParser : public JSON_Parser<CharType>
 {
 public:
-    JSON_StringParser(const std::basic_string<CharType>& string) 
+    JSON_StringParser(const std::basic_string<CharType>& string)
         : m_position(&string[0])
     {
         m_startpos = m_position;
@@ -355,7 +367,7 @@ inline bool JSON_Parser<CharType>::ParseInt64(CharType first, uint64_t& value)
     CharType ch = PeekCharacter();
     while (ch >= '0' && ch <= '9')
     {
-        int next_digit = ch - '0';
+        unsigned int next_digit = (unsigned int)(ch - '0');
         if (value > (ULLONG_MAX / 10) || (value == ULLONG_MAX/10 && next_digit > ULLONG_MAX%10))
             return false;
 
@@ -371,29 +383,44 @@ inline bool JSON_Parser<CharType>::ParseInt64(CharType first, uint64_t& value)
 // This namespace hides the x-plat helper functions
 namespace
 {
-#ifdef _MS_WINDOWS
+#if defined(_MS_WINDOWS)
     static int print_llu(char* ptr, size_t n, uint64_t val64)
     {
-        return _snprintf_s(ptr, n, _TRUNCATE, "%I64u", val64);
+        return _snprintf_s_l(ptr, n, _TRUNCATE, "%I64u", utility::details::scoped_c_thread_locale::c_locale(), val64);
     }
 
     static int print_llu(wchar_t* ptr, size_t n, uint64_t val64)
     {
-        return _snwprintf_s(ptr, n, _TRUNCATE, L"%I64u", val64);
+        return _snwprintf_s_l(ptr, n, _TRUNCATE, L"%I64u", utility::details::scoped_c_thread_locale::c_locale(), val64);
     }
 #else
-    static int print_llu(char* ptr, size_t n, unsigned long long val64)
+
+    static int __attribute__((__unused__)) print_llu(char* ptr, size_t n, unsigned long long val64)
     {
         return snprintf(ptr, n, "%llu", val64);
     }
-    static int print_llu(char* ptr, size_t n, unsigned long val64)
+    static int __attribute__((__unused__)) print_llu(char* ptr, size_t n, unsigned long val64)
     {
         return snprintf(ptr, n, "%lu", val64);
     }
 #endif
 
-    static double anystod(const char* str) { return strtod(str, nullptr); }
-    static double anystod(const wchar_t* str) { return wcstod(str, nullptr); }
+    static double anystod(const char* str)
+    {
+#ifdef _MS_WINDOWS
+        return _strtod_l(str, nullptr, utility::details::scoped_c_thread_locale::c_locale());
+#else
+        return strtod(str, nullptr);
+#endif
+    }
+    static double anystod(const wchar_t* str)
+    {
+#ifdef _MS_WINDOWS
+        return _wcstod_l(str, nullptr, utility::details::scoped_c_thread_locale::c_locale());
+#else
+        return wcstod(str, nullptr);
+#endif
+    }
 }
 
 template <typename CharType>
@@ -670,10 +697,20 @@ bool JSON_StringParser<CharType>::CompleteComment(typename JSON_Parser<CharType>
     return true;
 }
 
+void convert_append_unicode_code_unit(JSON_Parser<wchar_t>::Token &token, char16_t value)
+{
+    token.string_val.push_back(value);
+}
+void convert_append_unicode_code_unit(JSON_Parser<char>::Token &token, char16_t value)
+{
+    utf16string utf16(reinterpret_cast<utf16char *>(&value), 1);
+    token.string_val.append(::utility::conversions::utf16_to_utf8(utf16));
+}
+
 template <typename CharType>
 inline bool JSON_Parser<CharType>::handle_unescape_char(Token &token)
 {
-    // This function converts unescape character pairs (e.g. "\t") into their ASCII or UNICODE representations (e.g. tab sign)
+    // This function converts unescape character pairs (e.g. "\t") into their ASCII or Unicode representations (e.g. tab sign)
     // Also it handles \u + 4 hexadecimal digits
     CharType ch = NextCharacter();
     switch (ch)
@@ -704,15 +741,24 @@ inline bool JSON_Parser<CharType>::handle_unescape_char(Token &token)
             return true;
         case 'u':
         {
-            // A four-hexdigit unicode character
+            // A four-hexdigit Unicode character.
+            // Transform into a 16 bit code point.
             int decoded = 0;
             for (int i = 0; i < 4; ++i)
             {
                 ch = NextCharacter();
-                if (!isxdigit((unsigned char) (ch)))
+                int ch_int = static_cast<int>(ch);
+                if (ch_int < 0 || ch_int > 127)
+                    return false;
+#ifdef _MS_WINDOWS
+                const int isxdigitResult = _isxdigit_l(ch_int, utility::details::scoped_c_thread_locale::c_locale());
+#else
+                const int isxdigitResult = isxdigit(ch_int);
+#endif
+                if (!isxdigitResult)
                     return false;
 
-                int val = _hexval[ch];
+                int val = _hexval[static_cast<size_t>(ch_int)];
                 _ASSERTE(val != -1);
 
                 // Add the input char to the decoded number
@@ -720,8 +766,8 @@ inline bool JSON_Parser<CharType>::handle_unescape_char(Token &token)
             }
 
             // Construct the character based on the decoded number
-            ch = static_cast<CharType>(decoded & 0xFFFF);
-            token.string_val.push_back(ch);
+            convert_append_unicode_code_unit(token, static_cast<char16_t>(decoded));
+
             return true;
         }
         default:
@@ -931,14 +977,14 @@ std::unique_ptr<web::json::details::_Object> JSON_Parser<CharType>::_ParseObject
     auto obj = utility::details::make_unique<web::json::details::_Object>(g_keep_json_object_unsorted);
     auto& elems = obj->m_object.m_elements;
 
-    if ( tkn.kind != JSON_Parser<CharType>::Token::TKN_CloseBrace ) 
+    if ( tkn.kind != JSON_Parser<CharType>::Token::TKN_CloseBrace )
     {
         while ( true )
         {
             // State 1: New field or end of object, looking for field name or closing brace
 
             std::basic_string<CharType> fieldName;
-        
+
             switch ( tkn.kind )
             {
             case JSON_Parser<CharType>::Token::TKN_StringLiteral:
@@ -1003,7 +1049,7 @@ std::unique_ptr<web::json::details::_Array> JSON_Parser<CharType>::_ParseArray(t
 
     auto result = utility::details::make_unique<web::json::details::_Array>();
 
-    if ( tkn.kind != JSON_Parser<CharType>::Token::TKN_CloseBracket ) 
+    if ( tkn.kind != JSON_Parser<CharType>::Token::TKN_CloseBracket )
     {
         while ( true )
         {
@@ -1061,7 +1107,7 @@ std::unique_ptr<web::json::details::_Value> JSON_Parser<CharType>::_ParseValue(t
                 return std::move(value);
             }
 
-        case JSON_Parser<CharType>::Token::TKN_NumberLiteral:  
+        case JSON_Parser<CharType>::Token::TKN_NumberLiteral:
             {
                 auto value = utility::details::make_unique<web::json::details::_Number>(tkn.double_val);
                 GetNextToken(tkn);

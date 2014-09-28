@@ -39,9 +39,11 @@
 #include "cpprest/basic_types.h"
 #include "cpprest/asyncrt_utils.h"
 
-namespace web { namespace json
+namespace web 
 {
-
+/// Library for parsing and serializing JSON values to and from C++ types.
+namespace json
+{
     // Various forward declarations.
     namespace details 
     {
@@ -61,8 +63,11 @@ namespace web { namespace json
     }
 
     /// <summary>
-    /// Preserve the order of the name/value pairs when parsing a JSON object
+    /// Preserve the order of the name/value pairs when parsing a JSON object.
+    /// The default is false, which can yield better performance.
     /// </summary>
+    /// <param name="keep_order"><c>true</c> if ordering should be preserved when parsing, <c>false</c> otherwise.</param>
+    /// <remarks>Note this is a global setting and affects all JSON parsing done.</remarks>
     void _ASYNCRTIMP keep_object_element_order(bool keep_order);
 
 #ifdef _MS_WINDOWS
@@ -84,7 +89,21 @@ namespace web { namespace json
         /// <summary>
         /// This enumeration represents the various kinds of JSON values.
         /// </summary>
-        enum value_type { Number, Boolean, String, Object, Array, Null };
+        enum value_type 
+        { 
+            /// Number value
+            Number, 
+            /// Boolean value
+            Boolean, 
+            /// String value
+            String, 
+            /// Object value
+            Object, 
+            /// Array value
+            Array, 
+            /// Null value
+            Null 
+        };
 
         /// <summary>
         /// Constructor creating a null value
@@ -131,16 +150,56 @@ namespace web { namespace json
         /// Constructor creating a JSON string value
         /// </summary>
         /// <param name="value">The C++ value to create a JSON value from, a C++ STL string of the platform-native character width</param>
-        _ASYNCRTIMP explicit value(utility::string_t);
+        /// <remarks>
+        /// This constructor has O(n) performance because it tries to determine if
+        /// specified string has characters that should be properly escaped in JSON. 
+        /// <remarks>
+        _ASYNCRTIMP explicit value(utility::string_t value);
+
+        /// <summary>
+        /// Constructor creating a JSON string value specifying if the string contains characters to escape
+        /// </summary>
+        /// <param name="value">The C++ value to create a JSON value from, a C++ STL string of the platform-native character width</param>
+        /// <param name="has_escape_chars">Whether <paramref name="value" /> contains characters 
+        /// that should be escaped in JSON value</param>
+        /// <remarks>
+        /// This constructor has O(1) performance.
+        /// </remarks>
+        _ASYNCRTIMP explicit value(utility::string_t value, bool has_escape_chars);
 
         /// <summary>
         /// Constructor creating a JSON string value
         /// </summary>
         /// <param name="value">The C++ value to create a JSON value from, a C++ STL string of the platform-native character width</param>
-        /// <remarks>This constructor exists in order to avoid string literals matching another constructor,
+        /// <remarks>
+        /// <para>
+        /// This constructor has O(n) performance because it tries to determine if
+        /// specified string has characters that should be properly escaped in JSON. 
+        /// </para>
+        /// <para>
+        /// This constructor exists in order to avoid string literals matching another constructor,
         /// as is very likely. For example, conversion to bool does not require a user-defined conversion,
-        /// and will therefore match first, which means that the JSON value turns up as a boolean.</remarks>
-        _ASYNCRTIMP explicit value(const utility::char_t *);
+        /// and will therefore match first, which means that the JSON value turns up as a boolean.
+        /// </para>
+        /// </remarks>
+        _ASYNCRTIMP explicit value(const utility::char_t* value);
+
+        /// <summary>
+        /// Constructor creating a JSON string value
+        /// </summary>
+        /// <param name="value">The C++ value to create a JSON value from, a C++ STL string of the platform-native character width</param>
+        /// <param name="has_escape_chars">Whether <paramref name="value" /> contains characters 
+        /// <remarks>
+        /// <para>
+        /// This overload has O(1) performance.
+        /// </para>
+        /// <para>
+        /// This constructor exists in order to avoid string literals matching another constructor,
+        /// as is very likely. For example, conversion to bool does not require a user-defined conversion,
+        /// and will therefore match first, which means that the JSON value turns up as a boolean.
+        /// </para>
+        /// </remarks>
+        _ASYNCRTIMP explicit value(const utility::char_t* value, bool has_escape_chars);
 
         /// <summary>
         /// Copy constructor
@@ -150,7 +209,7 @@ namespace web { namespace json
         /// <summary>
         /// Move constructor
         /// </summary>
-        _ASYNCRTIMP value(value &&);
+        _ASYNCRTIMP value(value &&) _noexcept ;
 
         /// <summary>
         /// Assignment operator.
@@ -162,7 +221,7 @@ namespace web { namespace json
         /// Move assignment operator.
         /// </summary>
         /// <returns>The JSON value object that contains the result of the assignment.</returns>
-        _ASYNCRTIMP value &operator=(value &&);
+        _ASYNCRTIMP value &operator=(value &&) _noexcept ;
 
         // Static factories
 
@@ -198,7 +257,23 @@ namespace web { namespace json
         /// </summary>
         /// <param name="value">The C++ value to create a JSON value from</param>
         /// <returns>A JSON string value</returns>
+        /// <remarks>
+        /// This overload has O(n) performance because it tries to determine if
+        /// specified string has characters that should be properly escaped in JSON. 
+        /// <remarks>
         static _ASYNCRTIMP value __cdecl string(utility::string_t value);
+
+        /// <summary>
+        /// Creates a string value specifying if the string contains characters to escape
+        /// </summary>
+        /// <param name="value">The C++ value to create a JSON value from</param>
+        /// <param name="has_escape_chars">Whether <paramref name="value" /> contains characters 
+        /// that should be escaped in JSON value</param>
+        /// <returns>A JSON string value</returns>
+        /// <remarks>
+        /// This overload has O(1) performance.
+        /// </remarks>
+        static _ASYNCRTIMP value __cdecl string(utility::string_t value, bool has_escape_chars);
 
 #ifdef _MS_WINDOWS
 private:
@@ -935,16 +1010,6 @@ public:
         }
 
         /// <summary>
-        /// Gets an iterator to an element of a JSON object.
-        /// </summary>
-        /// <param name="key">The key of an element in the JSON object.</param>
-        /// <returns>An iterator to the value kept in the field.</returns>
-        iterator find(const utility::string_t& key)
-        {
-            return utility::details::remove_iterator_constness(m_elements, find_internal(key));
-        }
-
-        /// <summary>
         /// Gets the number of elements of the object.
         /// </summary>
         /// <returns>The number of elements.</returns>
@@ -1032,8 +1097,8 @@ public:
             return iter;
         }
 
-        const bool m_keep_order;
         storage_type m_elements;
+        const bool m_keep_order;
         friend class details::_Object;
 
         template<typename CharType> friend class json::details::JSON_Parser;
@@ -1055,7 +1120,6 @@ public:
 
     public:
 
-#pragma region "is" checkers
         /// <summary>
         /// Does the number fit into int32?
         /// </summary>
@@ -1089,9 +1153,7 @@ public:
                 return false;
             }
         }
-#pragma endregion
 
-#pragma region "to" converters
         /// <summary>
         /// Converts the JSON number to a C++ double.
         /// </summary>
@@ -1154,7 +1216,6 @@ public:
             else
                 return static_cast<uint64_t>(m_intval);
         }
-#pragma endregion
 
         /// <summary>
         /// Is the number represented internally as an integral type?
@@ -1422,8 +1483,7 @@ public:
             virtual void serialize_impl(std::wstring& str) const
             {
                 serialize_impl_char_type(str);
-            }
-            
+            }  
 #endif
 
         protected:

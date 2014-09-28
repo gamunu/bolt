@@ -40,6 +40,11 @@ using namespace boost::locale::conv;
 #include <CoreFoundation/CoreFoundation.h>
 #endif
 
+// For more details see https://casablanca.codeplex.com/wikipage?title=Running%20Leak%20Detection&IsNewlyCreatedPage=true
+#if defined(CASA_ENABLE_VLD)
+#include "C:/Program Files (x86)/Visual Leak Detector/include/vld.h"
+#endif
+
 using namespace web;
 using namespace utility;
 using namespace utility::conversions;
@@ -47,7 +52,110 @@ using namespace utility::conversions;
 namespace utility
 {
 
-#pragma region error categories
+namespace details
+{
+
+#ifndef ANDROID
+std::once_flag g_c_localeFlag;
+std::unique_ptr<scoped_c_thread_locale::xplat_locale, void(*)(scoped_c_thread_locale::xplat_locale *)> g_c_locale(nullptr, [](scoped_c_thread_locale::xplat_locale *){});
+scoped_c_thread_locale::xplat_locale scoped_c_thread_locale::c_locale()
+{
+    std::call_once(g_c_localeFlag, [&]()
+    {
+        scoped_c_thread_locale::xplat_locale *clocale = new scoped_c_thread_locale::xplat_locale();
+#ifdef _MS_WINDOWS
+        *clocale = _create_locale(LC_ALL, "C");
+        if (clocale == nullptr)
+        {
+            throw std::runtime_error("Unable to create 'C' locale.");
+        }
+        auto deleter = [](scoped_c_thread_locale::xplat_locale *clocale)
+        {
+            _free_locale(*clocale);
+        };
+#else
+        *clocale = newlocale(LC_ALL, "C", nullptr);
+        if (clocale == nullptr)
+        {
+            throw std::runtime_error("Unable to create 'C' locale.");
+        }
+        auto deleter = [](scoped_c_thread_locale::xplat_locale *clocale)
+        {
+            freelocale(*clocale);
+        };
+#endif
+        g_c_locale = std::unique_ptr<scoped_c_thread_locale::xplat_locale, void(*)(scoped_c_thread_locale::xplat_locale *)>(clocale, deleter);
+    });
+    return *g_c_locale;
+}
+#endif
+
+#ifdef _MS_WINDOWS
+scoped_c_thread_locale::scoped_c_thread_locale()
+    : m_prevLocale(), m_prevThreadSetting(-1)
+{
+    char *prevLocale = setlocale(LC_ALL, nullptr);
+    if (prevLocale == nullptr)
+    {
+        throw std::runtime_error("Unable to retrieve current locale.");
+    }
+
+    if (std::strcmp(prevLocale, "C") != 0)
+    { 
+        m_prevLocale = prevLocale;
+        m_prevThreadSetting = _configthreadlocale(_ENABLE_PER_THREAD_LOCALE);
+        if (m_prevThreadSetting == -1)
+        {
+            throw std::runtime_error("Unable to enable per thread locale.");
+        }
+        if (setlocale(LC_ALL, "C") == nullptr)
+        {
+             _configthreadlocale(m_prevThreadSetting);
+             throw std::runtime_error("Unable to set locale");
+        }
+    }   
+}
+
+scoped_c_thread_locale::~scoped_c_thread_locale()
+{
+    if (m_prevThreadSetting != -1)
+    {
+        setlocale(LC_ALL, m_prevLocale.c_str());
+        _configthreadlocale(m_prevThreadSetting);
+    }
+}
+#elif defined(ANDROID)
+scoped_c_thread_locale::scoped_c_thread_locale() {}
+scoped_c_thread_locale::~scoped_c_thread_locale() {}
+#else
+scoped_c_thread_locale::scoped_c_thread_locale()
+    : m_prevLocale(nullptr)
+{
+    char *prevLocale = setlocale(LC_ALL, nullptr);
+    if (prevLocale == nullptr)
+    {
+        throw std::runtime_error("Unable to retrieve current locale.");
+    }
+        
+    if (std::strcmp(prevLocale, "C") != 0)
+    {
+        m_prevLocale = uselocale(c_locale());
+        if (m_prevLocale == nullptr)
+        {
+            throw std::runtime_error("Unable to set locale");
+        }
+    }
+}
+
+scoped_c_thread_locale::~scoped_c_thread_locale()
+{
+    if (m_prevLocale != nullptr)
+    {
+        uselocale(m_prevLocale);
+    }
+}
+#endif
+}
 
 namespace details
 {
@@ -69,7 +177,7 @@ const std::error_category & __cdecl windows_category()
     return instance;
 }
 
-std::string windows_category_impl::message(int errorCode) const
+std::string windows_category_impl::message(int errorCode) const _noexcept
 {
     const size_t buffer_size = 4096;
     DWORD dwFlags = FORMAT_MESSAGE_FROM_SYSTEM;
@@ -105,7 +213,7 @@ std::string windows_category_impl::message(int errorCode) const
     return utility::conversions::to_utf8string(buffer);
 }
 
-std::error_condition windows_category_impl::default_error_condition(int errorCode) const
+std::error_condition windows_category_impl::default_error_condition(int errorCode) const _noexcept
 {
     // First see if the STL implementation can handle the mapping for common cases.
     const std::error_condition errCondition = std::system_category().default_error_condition(errorCode);
@@ -151,10 +259,6 @@ const std::error_category & __cdecl linux_category()
 #endif
 
 }
-
-#pragma endregion
-
-#pragma region conversions
 
 utf16string __cdecl conversions::utf8_to_utf16(const std::string &s)
 {
@@ -480,11 +584,6 @@ std::string __cdecl conversions::to_utf8string(const utf16string &value) { retur
 utf16string __cdecl conversions::to_utf16string(const std::string &value) { return utf8_to_utf16(value); }
 
 utf16string __cdecl conversions::to_utf16string(utf16string value) { return std::move(value); }
-
-
-#pragma endregion
-
-#pragma region datetime
 
 #ifndef WIN32
 datetime datetime::timeval_to_datetime(struct timeval time)
@@ -876,9 +975,45 @@ datetime __cdecl datetime::from_string(const utility::string_t& dateString, date
         {
             return datetime();
         }
-    } 
+    }
 
+#if defined(ANDROID)
+    // HACK: The (nonportable?) POSIX function timegm is not available in
+    //       bionic. As a workaround[1][2], we set the C library timezone to
+    //       UTC, call mktime, then set the timezone back. However, the C
+    //       environment is fundamentally a shared global resource and thread-
+    //       unsafe. We can protect our usage here, however any other code might
+    //       manipulate the environment at the same time.
+    //
+    // [1] http://linux.die.net/man/3/timegm
+    // [2] http://www.gnu.org/software/libc/manual/html_node/Broken_002ddown-Time.html
+    time_t time;
+
+    static boost::mutex env_var_lock;
+    {
+        boost::lock_guard<boost::mutex> lock(env_var_lock);
+        std::string prev_env;
+        auto prev_env_cstr = getenv("TZ");
+        if (prev_env_cstr != nullptr)
+        {
+            prev_env = prev_env_cstr;
+        }
+        setenv("TZ", "UTC", 1);
+
+        time = mktime(&output);
+
+        if (prev_env_cstr)
+        {
+            setenv("TZ", prev_env.c_str(), 1);
+        }
+        else
+        {
+            unsetenv("TZ");
+        }
+    }
+#else
     time_t time = timegm(&output);
+#endif
 
     struct timeval tv = timeval();
     tv.tv_sec = time;
@@ -886,9 +1021,6 @@ datetime __cdecl datetime::from_string(const utility::string_t& dateString, date
     return timeval_to_datetime(tv);
 #endif
 }
-#pragma endregion
-
-#pragma region "timespan"
 
 /// <summary>
 /// Converts a timespan/interval in seconds to xml duration string as specified by
@@ -998,6 +1130,16 @@ utility::seconds __cdecl timespan::xml_duration_to_seconds(utility::string_t tim
     return utility::seconds(numSecs);
 }
 
-#pragma endregion
+const utility::string_t nonce_generator::c_allowed_chars(_XPLATSTR("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"));
+
+utility::string_t nonce_generator::generate()
+{
+    std::uniform_int_distribution<> distr(0, static_cast<int>(c_allowed_chars.length() - 1));
+    utility::string_t result;
+    result.reserve(length());
+    std::generate_n(std::back_inserter(result), length(), [&]() { return c_allowed_chars[distr(m_random)]; } );
+    return result;
+}
+
 
 }

@@ -32,14 +32,7 @@
 #include "cpprest/ws_client.h"
 
 #if !defined(_M_ARM) || defined(__cplusplus_winrt)
-#if defined(WINAPI_FAMILY_APP) && WINAPI_FAMILY == WINAPI_FAMILY_APP
-
-using namespace ::Windows::Foundation;
-using namespace ::Windows::Storage;
-using namespace ::Windows::Storage::Streams;
-using namespace ::Windows::Networking;
-using namespace ::Windows::Networking::Sockets;
-#endif /* WINAPI_FAMILY == WINAPI_FAMILY_APP */
+#if _NOT_PHONE8_
 
 using namespace concurrency;
 using namespace concurrency::streams::details;
@@ -48,51 +41,46 @@ namespace web
 {
 namespace experimental
 {
-namespace web_sockets
+namespace websockets
 {
 namespace client
 {
 
-void details::_websocket_message::set_body(streams::istream instream)
+static ::utility::string_t g_subProtocolHeader = _XPLATSTR("Sec-WebSocket-Protocol");
+void websocket_client_config::add_subprotocol(const ::utility::string_t &name)
 {
-    set_streambuf(instream.streambuf());
+    m_headers.add(g_subProtocolHeader, name);
 }
 
-void details::_websocket_message::_prepare_to_receive_data()
+std::vector<::utility::string_t> websocket_client_config::subprotocols() const
 {
-    // The user did not specify a stream.
-    // We will create one...
-    concurrency::streams::producer_consumer_buffer<uint8_t> buf;
-    set_streambuf(buf);
-}
-
-std::string details::_websocket_message::_extract_string()
-{
-    auto& buf_r = streambuf();
-
-    if (buf_r.in_avail() == 0)
+    std::vector<::utility::string_t> values;
+    auto subprotocolHeader = m_headers.find(g_subProtocolHeader);
+    if (subprotocolHeader != m_headers.end())
     {
-        return std::string();
+        utility::stringstream_t header(subprotocolHeader->second);
+        utility::string_t token;
+        while (std::getline(header, token, U(',')))
+        {
+            http::details::trim_whitespace(token);
+            if (!token.empty())
+            {
+                values.push_back(token);
+            }
+        }
     }
-
-    std::string body;
-    body.resize(static_cast<std::string::size_type>(buf_r.in_avail()));
-    buf_r.getn(reinterpret_cast<uint8_t*>(&body[0]), body.size()).get();
-    return body;
+    return values;
 }
 
 pplx::task<std::string> websocket_incoming_message::extract_string() const
 {
-    if (_m_impl->message_type() == websocket_message_type::binary_fragment ||
-        _m_impl->message_type() == websocket_message_type::binary_message)
+    if (_m_impl->message_type() == websocket_message_type::binary_message)
     {
-        return pplx::task_from_exception<std::string>(websocket_exception(_XPLATSTR("Invalid message type")));
+        return pplx::task_from_exception<std::string>(websocket_exception("Invalid message type"));
     }
-
-    auto m_impl = _m_impl;
-
-    return pplx::create_task(_m_impl->_get_data_available()).then([m_impl]() { return m_impl->_extract_string(); });
+    return pplx::task_from_result(std::move(m_body.collection()));
 }
 
 }}}}
+#endif  //  _NOT_PHONE8_
 #endif

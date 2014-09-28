@@ -102,6 +102,9 @@ namespace Concurrency { namespace streams
         static const char *_out_streambuf_msg = "stream buffer not set up for output of data";
     }
 
+    /// <summary>
+    /// Base interface for all asynchronous output streams.
+    /// </summary>
     template<typename CharType>
     class basic_ostream
     {
@@ -435,8 +438,6 @@ namespace Concurrency { namespace streams
         std::shared_ptr<details::basic_ostream_helper<CharType>> m_helper;
     };
 
-#pragma region Type parsing helpers
-
     template<typename int_type> 
     struct _type_parser_integral_traits
     {
@@ -491,10 +492,10 @@ namespace Concurrency { namespace streams
         static pplx::task<void> _skip_whitespace(streams::streambuf<CharType> buffer);
 
         // Aid in parsing input: peek at a character at a time, call type-specific code to examine, extract value when done.
-        template<typename _ParseState, typename _ReturnType>
-        static pplx::task<_ReturnType> _parse_input(streams::streambuf<CharType> buffer,
-                                                    std::function<bool(std::shared_ptr<_ParseState>, int_type)> accept_character, 
-                                                    std::function<pplx::task<_ReturnType>(std::shared_ptr<_ParseState>)> extract);
+        // <remark>AcceptFunctor should model std::function<bool(std::shared_ptr<X>, int_type)></remark>
+        // <remark>ExtractFunctor should model std::function<pplx::task<ReturnType>(std::shared_ptr<X>)></remark>
+        template<typename StateType, typename ReturnType, typename AcceptFunctor, typename ExtractFunctor>
+        static pplx::task<ReturnType> _parse_input(streams::streambuf<CharType> buffer, AcceptFunctor accept_character, ExtractFunctor extract);
     };
 
     /// <summary>
@@ -553,8 +554,9 @@ namespace Concurrency { namespace streams
         }
     };
 
-#pragma endregion
-
+    /// <summary>
+    /// Base interface for all asynchronous input streams.
+    /// </summary>
     template<typename CharType>
     class basic_istream
     {
@@ -951,18 +953,41 @@ namespace Concurrency { namespace streams
             if ( !target.can_write() )
                 return pplx::task_from_exception<size_t>(std::make_exception_ptr(std::runtime_error("source buffer not set up for input of data")));
 
-            // Capture 'buffer' rather than 'helper' here due to VC++ 2010 limitations.
-            auto buffer = helper()->m_buffer;
+            auto l_buffer = helper()->m_buffer;
+            auto l_buf_size = this->buf_size;
+            std::shared_ptr<_read_helper> l_locals = std::make_shared<_read_helper>();
 
-            std::shared_ptr<_read_helper> _locals = std::make_shared<_read_helper>();
+            auto copy_to_target = [l_locals, target, l_buffer, l_buf_size]() mutable -> pplx::task<bool>
+            {
+                // We need to capture these, because the object itself may go away
+                // before we're done processing the data.
+                //auto locs = _locals;
+                //auto trg = target;
 
-            _dev10_ice_workaround wrkarnd(buffer, target, _locals, buf_size);
+                return l_buffer.getn(l_locals->outbuf, l_buf_size).then([=](size_t rd) mutable -> pplx::task<bool>
+                {
+                    if (rd == 0)
+                        return pplx::task_from_result(false);
 
-            auto loop = pplx::details::do_while(wrkarnd);
+                    // Must be nested to capture rd
+                    return target.putn(l_locals->outbuf, rd).then([target, l_locals, rd](size_t wr) mutable -> pplx::task<bool>
+                    {
+                        l_locals->total += wr;
+
+                        if (rd != wr)
+                            // Number of bytes written is less than number of bytes received.
+                            throw std::runtime_error("failed to write all bytes");
+
+                        return target.sync().then([]() { return true; });
+                    });
+                });
+            };
+
+            auto loop = pplx::details::do_while(copy_to_target);
 
             return loop.then([=](bool) mutable -> size_t
                 { 
-                    return _locals->total; 
+                    return l_locals->total; 
                 });
         }
 
@@ -1102,48 +1127,6 @@ namespace Concurrency { namespace streams
             }
         };
 
-        // To workaround a VS 2010 internal compiler error, we have to do our own
-        // "lambda" here...
-        class _dev10_ice_workaround
-        {
-        public:
-            _dev10_ice_workaround(streams::streambuf<CharType> buffer,
-                                  concurrency::streams::streambuf<CharType> target,
-                                  std::shared_ptr<typename basic_istream::_read_helper> locals,
-                                  size_t buf_size)
-            : _buffer(buffer), _target(target), _locals(locals), _buf_size(buf_size)
-            {
-            }
-            pplx::task<bool> operator()()
-            {
-                // We need to capture these, because the object itself may go away
-                // before we're done processing the data.
-                auto locs = _locals;
-                auto trg = _target;
-                
-                auto after_putn =
-                [=](size_t wr) mutable -> bool
-                {
-                    locs->total += wr;
-                    trg.sync().wait();
-                    return true;
-                };
-                
-                return _buffer.getn(locs->outbuf, buf_size).then(
-                                                                 [=] (size_t rd) mutable -> pplx::task<bool>
-                                                                 {
-                                                                     if ( rd == 0 )
-                                                                         return pplx::task_from_result(false);
-                                                                     return trg.putn(locs->outbuf, rd).then(after_putn);
-                                                                 });
-            }
-        private:
-            size_t _buf_size;
-            concurrency::streams::streambuf<CharType> _buffer;
-            concurrency::streams::streambuf<CharType> _target;
-            std::shared_ptr<typename basic_istream::_read_helper> _locals;
-        };
-        
         std::shared_ptr<details::basic_istream_helper<CharType>> m_helper;
     };
 
@@ -1153,7 +1136,6 @@ namespace Concurrency { namespace streams
     typedef basic_ostream<utf16char> wostream;
     typedef basic_istream<utf16char> wistream;
 
-#pragma region Input of data of various types.
 template<typename CharType>
 pplx::task<void> concurrency::streams::_type_parser_base<CharType>::_skip_whitespace(streams::streambuf<CharType> buffer)
 {
@@ -1194,13 +1176,13 @@ pplx::task<void> concurrency::streams::_type_parser_base<CharType>::_skip_whites
 }
 
 template<typename CharType>
-template<typename _ParseState, typename _ReturnType>
-pplx::task<_ReturnType> concurrency::streams::_type_parser_base<CharType>::_parse_input(
+template<typename StateType, typename ReturnType, typename AcceptFunctor, typename ExtractFunctor>
+pplx::task<ReturnType> concurrency::streams::_type_parser_base<CharType>::_parse_input(
     concurrency::streams::streambuf<CharType> buffer,
-    std::function<bool(std::shared_ptr<_ParseState>, int_type)> accept_character, 
-    std::function<pplx::task<_ReturnType>(std::shared_ptr<_ParseState>)> extract)
+    AcceptFunctor accept_character,
+    ExtractFunctor extract)
 {
-    std::shared_ptr<_ParseState> state = std::make_shared<_ParseState>();
+    std::shared_ptr<StateType> state = std::make_shared<StateType>();
 
     auto update_end = [=] (pplx::task<int_type> op) -> bool { op.wait(); return true; };
 
@@ -1237,14 +1219,14 @@ pplx::task<_ReturnType> concurrency::streams::_type_parser_base<CharType>::_pars
     };
 
     auto finish = 
-        [=](pplx::task<bool> op) -> pplx::task<_ReturnType>
+        [=](pplx::task<bool> op) -> pplx::task<ReturnType>
         { 
             op.wait();
-            pplx::task<_ReturnType> result = extract(state);
+            pplx::task<ReturnType> result = extract(state);
             return result; 
         };
 
-    return _skip_whitespace(buffer).then([=](pplx::task<void> op) -> pplx::task<_ReturnType>
+    return _skip_whitespace(buffer).then([=](pplx::task<void> op) -> pplx::task<ReturnType>
         {
             op.wait();
 
@@ -1807,7 +1789,6 @@ private:
     }
 };
 #endif //_MS_WINDOWS
-#pragma endregion
 
 }}
 

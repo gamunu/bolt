@@ -100,7 +100,7 @@ namespace details {
 
     /// <summary>
     /// Private stream buffer implementation for file streams.
-        /// The class itself should not be used in application code, it is used by the stream definitions farther down in the header file.
+    /// The class itself should not be used in application code, it is used by the stream definitions farther down in the header file.
     /// </summary>
     template<typename _CharType>
     class basic_file_buffer : public details::streambuf_state_manager<_CharType>
@@ -111,7 +111,8 @@ namespace details {
         typedef typename basic_streambuf<_CharType>::pos_type pos_type;
         typedef typename basic_streambuf<_CharType>::off_type off_type;
 
-        virtual ~basic_file_buffer() {
+        virtual ~basic_file_buffer() 
+        {
             if( this->can_read() )
             {
                 this->_close_read().wait();
@@ -122,6 +123,7 @@ namespace details {
                 this->_close_write().wait();
             }
         }
+
     protected:
 
         /// <summary>
@@ -735,7 +737,6 @@ namespace details {
         }
 #endif
 
-#pragma region Completion callback interface implementations
         class _filestream_callback_open : public details::_filestream_callback
         {
         public:
@@ -940,7 +941,6 @@ namespace details {
             _file_info *m_info;
             pplx::task_completion_event<int_type> m_op;
         };
-#pragma endregion
 
         _file_info *m_info;
         async_operation_queue m_readOps;

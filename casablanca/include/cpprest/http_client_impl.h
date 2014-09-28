@@ -58,7 +58,6 @@ using namespace utility;
 # define CRLF std::string("\r\n")
 #endif
 
-
 using namespace web::http::details;
 
 namespace web { namespace http { namespace client { namespace details
@@ -66,7 +65,6 @@ namespace web { namespace http { namespace client { namespace details
 
 #ifdef _MS_WINDOWS
 static const utility::char_t * get_with_body = _XPLATSTR("A GET or HEAD request should not have an entity body.");
-#endif
 
 // Helper function to trim leading and trailing null characters from a string.
 static void trim_nulls(utility::string_t &str)
@@ -77,6 +75,8 @@ static void trim_nulls(utility::string_t &str)
     for(index = str.size(); index > 0 && str[index - 1] == 0; --index);
     str.erase(index);
 }
+
+#endif
 
 // Flatten the http_headers into a name:value pairs separated by a carriage return and line feed.
 static utility::string_t flatten_http_headers(const http_headers &headers)
@@ -141,9 +141,8 @@ public:
     /// <summary>
     /// Completes this request, setting the underlying task completion event, and cleaning up the handles
     /// </summary>
-    void complete_request(size_t body_size)
+    void complete_request(utility::size64_t body_size)
     {
-        m_response.set_error_code(0);
         m_response._get_impl()->_complete(body_size);
 
         finish();
@@ -151,8 +150,7 @@ public:
 
     void report_error(unsigned long error_code, const utility::string_t & errorMessage)
     {
-        m_response.set_error_code(error_code);
-        report_exception(http_exception((int)m_response.error_code(), errorMessage));
+        report_exception(http_exception((int)error_code, errorMessage));
     }
 
     template<typename _ExceptionType>
@@ -203,20 +201,20 @@ public:
         return outstream.streambuf();
     }
 
+    // Reference to the http_client implementation.
+    std::shared_ptr<_http_client_communicator> m_http_client;
+
     // request/response pair.
     http_request m_request;
     http_response m_response;
 
+    std::exception_ptr m_exceptionPtr;
+
     size64_t m_uploaded;
     size64_t m_downloaded;
 
-    std::exception_ptr m_exceptionPtr;
-
     // task completion event to signal request is completed.
     pplx::task_completion_event<http_response> m_request_completion;
-
-    // Reference to the http_client implementation.
-    std::shared_ptr<_http_client_communicator> m_http_client;
 
     // Registration for cancellation notification if enabled.
     pplx::cancellation_token_registration m_cancellationRegistration;
@@ -301,6 +299,11 @@ public:
         return m_client_config;
     }
 
+    const uri & base_uri() const
+    {
+        return m_uri;
+    }
+
 protected:
     _http_client_communicator(http::uri address, http_client_config client_config)
         : m_uri(std::move(address)), m_client_config(std::move(client_config)), m_opened(false), m_scheduled(0)
@@ -330,7 +333,7 @@ private:
         // First see if client needs to be opened.
         auto error = open_if_required();
 
-        if (error != S_OK)
+        if (error != 0)
         {
             // Failed to open
             request->report_error(error, _XPLATSTR("Open failed"));
@@ -346,18 +349,18 @@ private:
 
     unsigned long open_if_required()
     {
-        unsigned long error = S_OK;
+        unsigned long error = 0;
 
-        if( !m_opened )
+        if(!m_opened)
         {
             pplx::extensibility::scoped_critical_section_t l(m_open_lock);
 
             // Check again with the lock held
-            if ( !m_opened )
+            if (!m_opened)
             {
                 error = open();
 
-                if (error == S_OK)
+                if (error == 0)
                 {
                     m_opened = true;
                 }
@@ -389,7 +392,7 @@ private:
 
     // Queue used to guarantee ordering of requests, when applicable.
     std::queue<std::shared_ptr<request_context>> m_requests_queue;
-    int                           m_scheduled;
+    int m_scheduled;
 };
 
 inline void request_context::finish()
@@ -439,15 +442,13 @@ void verify_uri(const uri &uri)
 } // namespace details
 
 http_client::http_client(uri base_uri)
-    :_base_uri(std::move(base_uri))
 {
-    build_pipeline(_base_uri, http_client_config());
+    build_pipeline(std::move(base_uri), http_client_config());
 }
 
 http_client::http_client(uri base_uri, http_client_config client_config)
-    :_base_uri(std::move(base_uri))
 {
-    build_pipeline(_base_uri, std::move(client_config));
+    build_pipeline(std::move(base_uri), std::move(client_config));
 }
 
 void http_client::build_pipeline(uri base_uri, http_client_config client_config)
@@ -461,12 +462,26 @@ void http_client::build_pipeline(uri base_uri, http_client_config client_config)
     details::verify_uri(base_uri);
 
     m_pipeline = ::web::http::http_pipeline::create_pipeline(std::make_shared<details::http_network_handler>(std::move(base_uri), std::move(client_config)));
+
+#if !defined(CPPREST_TARGET_XP) && !defined(_PHONE8_)
+    add_handler(std::static_pointer_cast<http::http_pipeline_stage>(
+        std::make_shared<oauth1::details::oauth1_handler>(this->client_config().oauth1())));
+#endif // !defined(CPPREST_TARGET_XP) && !defined(_PHONE8_)
+
+    add_handler(std::static_pointer_cast<http::http_pipeline_stage>(
+        std::make_shared<oauth2::details::oauth2_handler>(this->client_config().oauth2())));
 }
 
-const http_client_config& http_client::client_config() const
+const http_client_config & http_client::client_config() const
 {
-    auto* ph = static_cast<details::http_network_handler*>(m_pipeline->last_stage().get());
+    auto ph = std::static_pointer_cast<details::http_network_handler>(m_pipeline->last_stage());
     return ph->http_client_impl()->client_config();
+}
+
+const uri & http_client::base_uri() const
+{
+    auto ph = std::static_pointer_cast<details::http_network_handler>(m_pipeline->last_stage());
+    return ph->http_client_impl()->base_uri();
 }
 
 }}} // namespaces

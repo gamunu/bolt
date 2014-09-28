@@ -224,7 +224,7 @@ public:
 
     size64_t m_remaining_to_write;
 
-    std::char_traits<uint8_t>::pos_type m_readbuf_pos;
+    std::char_traits<uint8_t>::pos_type m_startingPosition;
 
     // If the user specified that to guarantee data buffering of request data, in case of challenged authentication requests, etc...
     // Then if the request stream buffer doesn't support seeking we need to copy the body chunks as it is sent.
@@ -262,7 +262,7 @@ private:
         : request_context(client, request), 
         m_request_handle(nullptr), 
         m_bodyType(no_body),
-        m_readbuf_pos(0),
+        m_startingPosition(std::char_traits<uint8_t>::eof()),
         m_body_data(),
         m_remaining_to_write(0),
         m_proxy_authentication_tried(false),
@@ -589,7 +589,7 @@ protected:
             if(!WinHttpAddRequestHeaders(
                 winhttp_context->m_request_handle,
                 flattened_headers.c_str(),
-                (DWORD)flattened_headers.length(),
+                static_cast<DWORD>(flattened_headers.length()),
                 WINHTTP_ADDREQ_FLAG_ADD))
             {
                 request->report_error(GetLastError(), _XPLATSTR("Error adding request headers"));
@@ -674,7 +674,9 @@ private:
             return;
         }
 
-        winhttp_context->m_readbuf_pos = rbuf.getpos(std::ios_base::in);
+        // Record starting position incase request is challenged for authorization
+        // and needs to seek back to where reading is started from.
+        winhttp_context->m_startingPosition = rbuf.getpos(std::ios_base::in);
 
         // If we find ourselves here, we either don't know how large the message
         // body is, or it is larger than our threshold.
@@ -702,6 +704,44 @@ private:
         return has_proxy_credentials || has_server_credentials;
     }
 
+    // Helper function to query/read next part of response data from winhttp.
+    static void read_next_response_chunk(winhttp_request_context *pContext, DWORD bytesRead, bool firstRead=false)
+    {
+        const bool defaultChunkSize = pContext->m_http_client->client_config().is_default_chunksize();
+
+        // If user specified a chunk size then read in chunks instead of using query data avaliable.
+        if (defaultChunkSize)
+        {
+            if (!WinHttpQueryDataAvailable(pContext->m_request_handle, nullptr))
+            {
+                pContext->report_error(GetLastError(), _XPLATSTR("Error querying for http body data"));
+            }
+        }
+        else
+        {
+            // If bytes read is less than the chunksize this request is done.
+            const size_t chunkSize = pContext->m_http_client->client_config().chunksize();
+            if (bytesRead < chunkSize && !firstRead)
+            {
+                pContext->complete_request(pContext->m_downloaded);
+            }
+            else
+            {
+                auto writebuf = pContext->_get_writebuffer();
+                pContext->allocate_reply_space(writebuf.alloc(chunkSize), chunkSize);
+
+                if (!WinHttpReadData(
+                    pContext->m_request_handle,
+                    pContext->m_body_data.get(),
+                    static_cast<DWORD>(chunkSize),
+                    nullptr))
+                {
+                    pContext->report_error(GetLastError(), _XPLATSTR("Error receiving http response body chunk"));
+                }
+            }
+        }
+    }
+
     static void _transfer_encoding_chunked_write_data(_In_ winhttp_request_context * p_request_context)
     {
         const size_t chunk_size = p_request_context->m_http_client->client_config().chunksize();
@@ -717,6 +757,8 @@ private:
                 // If the read buffer for copying exists then write to it.
                 if (p_request_context->m_readBufferCopy)
                 {
+                    // We have raw memory here writing to a memory stream so it is safe to wait
+                    // since it will always be non-blocking.
                     p_request_context->m_readBufferCopy->putn(&p_request_context->m_body_data.get()[http::details::chunked_encoding::data_offset], bytes_read).wait();
                 }
             }
@@ -736,7 +778,7 @@ private:
                 p_request_context->m_bodyType = no_body;
                 if (p_request_context->m_readBufferCopy)
                 {
-                    // Move the saved buffer into the read buffer.
+                    // Move the saved buffer into the read buffer, which now supports seeking.
                     p_request_context->m_readStream = concurrency::streams::container_stream<std::vector<uint8_t>>::open_istream(std::move(p_request_context->m_readBufferCopy->collection()));
                     p_request_context->m_readBufferCopy.reset();
                 }
@@ -747,7 +789,7 @@ private:
             if (!WinHttpWriteData(
                 p_request_context->m_request_handle,
                 &p_request_context->m_body_data.get()[offset],
-                (DWORD) length,
+                static_cast<DWORD>(length),
                 nullptr))
             {
                 p_request_context->report_error(GetLastError(), _XPLATSTR("Error writing data"));
@@ -800,7 +842,7 @@ private:
             if( !WinHttpWriteData(
                 p_request_context->m_request_handle,
                 p_request_context->m_body_data.get(),
-                (DWORD)to_write,
+                static_cast<DWORD>(to_write),
                 nullptr))
             {
                 p_request_context->report_error(GetLastError(), _XPLATSTR("Error writing data"));
@@ -842,7 +884,7 @@ private:
                 if( !WinHttpWriteData(
                     p_request_context->m_request_handle,
                     p_request_context->m_body_data.get(),
-                    (DWORD)read,
+                    static_cast<DWORD>(read),
                     nullptr))
                 {
                     p_request_context->report_error(GetLastError(), _XPLATSTR("Error writing data"));
@@ -864,10 +906,6 @@ private:
         _ASSERTE(response.status_code() == status_codes::Unauthorized  || response.status_code() == status_codes::ProxyAuthRequired
             || error == ERROR_WINHTTP_RESEND_REQUEST);
 
-        // If the application set a stream for the request body, we can only resend if the input stream supports
-        // seeking and we are also successful in seeking to the position we started at when the original request
-        // was sent.
-
         bool got_credentials = false;
         BOOL results;
         DWORD dwSupportedSchemes;
@@ -877,22 +915,16 @@ private:
         string_t username;
         string_t password;
 
-        if (request.body())
+        // Check if the saved read position is valid
+        auto rdpos = p_request_context->m_startingPosition;
+        if (rdpos != static_cast<std::char_traits<uint8_t>::pos_type>(std::char_traits<uint8_t>::eof()))
         {
-            // Valid request stream => msg has a body that needs to be resend
+            auto rbuf = p_request_context->_get_readbuffer();
 
-            auto rdpos = p_request_context->m_readbuf_pos;
-
-            // Check if the saved read position is valid
-            if (rdpos != (std::char_traits<uint8_t>::pos_type) - 1)
+            // Try to seek back to the saved read position
+            if (rbuf.seekpos(rdpos, std::ios::ios_base::in) != rdpos)
             {
-                auto rbuf = p_request_context->_get_readbuffer();
-
-                if (rbuf.is_open())
-                {
-                    // Try to seek back to the saved read position
-                    rbuf.seekpos(rdpos, std::ios::ios_base::in);
-                }
+                return false;
             }
         }
 
@@ -1078,7 +1110,7 @@ private:
                         auto progress = p_request_context->m_request._get_impl()->_progress_handler();
                         if ( progress )
                         {
-                            p_request_context->m_uploaded += (size64_t)bytesWritten;
+                            p_request_context->m_uploaded += bytesWritten;
                             try { (*progress)(message_direction::upload, p_request_context->m_uploaded); } catch(...)
                             {
                                 p_request_context->report_exception(std::current_exception());
@@ -1163,11 +1195,7 @@ private:
                     // If none of them is specified, the message length should be determined by the server closing the connection.
                     // http://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.4
 
-                    // WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE callback determines whether this function was successful and the value of the parameters.
-                    if(!WinHttpQueryDataAvailable(hRequestHandle, nullptr))
-                    {
-                        p_request_context->report_error(GetLastError(), _XPLATSTR("Error querying for http body data"));
-                    }
+                    read_next_response_chunk(p_request_context, 0, true);
                     break;
                 }
             case WINHTTP_CALLBACK_STATUS_DATA_AVAILABLE :
@@ -1178,16 +1206,13 @@ private:
                     if(num_bytes > 0)
                     {
                         auto writebuf = p_request_context->_get_writebuffer();
-                        if ( !_check_streambuf(p_request_context, writebuf, _XPLATSTR("Output stream is not open")) )
-                            break;
-
                         p_request_context->allocate_reply_space(writebuf.alloc(num_bytes), num_bytes);
 
                         // Read in body all at once.
                         if(!WinHttpReadData(
                             hRequestHandle,
-                            (LPVOID)p_request_context->m_body_data.get(),
-                            (DWORD)num_bytes,
+                            p_request_context->m_body_data.get(),
+                            num_bytes,
                             nullptr))
                         {
                             p_request_context->report_error(GetLastError(), _XPLATSTR("Error receiving http body chunk"));
@@ -1207,75 +1232,65 @@ private:
                             }
                         }
 
-                        p_request_context->complete_request((size_t)p_request_context->m_downloaded);
+                        p_request_context->complete_request(p_request_context->m_downloaded);
                     }
                     break;
                 }
             case WINHTTP_CALLBACK_STATUS_READ_COMPLETE :
                 {
                     // Status information length contains the number of bytes read.
-                    // WinHTTP will always fill the whole buffer or read nothing.
-                    // If number of bytes read is zero than we have reached the end.
+                    const DWORD bytesRead = statusInfoLength;
 
-                    if(statusInfoLength > 0)
+                    // Report progress about downloaded bytes.
+                    auto progress = p_request_context->m_request._get_impl()->_progress_handler();
+                    p_request_context->m_downloaded += statusInfoLength;
+                    if (progress)
                     {
-                        auto progress = p_request_context->m_request._get_impl()->_progress_handler();
-                        p_request_context->m_downloaded += (size64_t)statusInfoLength;
-                        if ( progress )
+                        try { (*progress)(message_direction::download, p_request_context->m_downloaded); }
+                        catch (...)
                         {
-                            try { (*progress)(message_direction::download, p_request_context->m_downloaded); } catch(...)
+                            p_request_context->report_exception(std::current_exception());
+                            return;
+                        }
+                    }
+
+                    // If no bytes have been read, then this is the end of the response.
+                    if (bytesRead == 0)
+                    {
+                        p_request_context->complete_request(p_request_context->m_downloaded);
+                        break;
+                    }
+
+                    // If the data was allocated directly from the buffer then commit, otherwise we still
+                    // need to write to the response stream buffer.
+                    auto writebuf = p_request_context->_get_writebuffer();
+                    if (p_request_context->is_externally_allocated())
+                    {
+                        writebuf.commit(bytesRead);
+                        read_next_response_chunk(p_request_context, bytesRead);
+                    }
+                    else
+                    {
+                        writebuf.putn(p_request_context->m_body_data.get(), bytesRead).then(
+                            [hRequestHandle, p_request_context, bytesRead] (pplx::task<size_t> op)
+                        {
+                            size_t written = 0;
+                            try { written = op.get(); }
+                            catch (...)
                             {
                                 p_request_context->report_exception(std::current_exception());
                                 return;
                             }
-                        }
 
-                        auto writebuf = p_request_context->_get_writebuffer();
-                        
-                        if ( p_request_context->is_externally_allocated() )
-                        {
-                            writebuf.commit(statusInfoLength);
-
-                            // Look for more data
-                            if (!WinHttpQueryDataAvailable(hRequestHandle, nullptr))
+                            // If we couldn't write everything, it's time to exit.
+                            if (written != bytesRead)
                             {
-                                p_request_context->report_error(GetLastError(), _XPLATSTR("Error querying for http body chunk"));
+                                p_request_context->report_exception(std::runtime_error("response stream unexpectedly failed to write the requested number of bytes"));
                                 return;
                             }
-                        }
-                        else 
-                        {
-                            writebuf.putn(p_request_context->m_body_data.get(), statusInfoLength).then(
-                                [hRequestHandle, p_request_context, statusInfoLength]
-                            (pplx::task<size_t> op)
-                            {
-                                size_t written = 0;
-                                try { written = op.get(); } catch(...)
-                                {
-                                    p_request_context->report_exception(std::current_exception());
-                                    return;
-                                }
 
-                                // If we couldn't write everything, it's time to exit.
-                                if ( written != statusInfoLength ) 
-                                {
-                                    p_request_context->report_exception(std::runtime_error("response stream unexpectedly failed to write the requested number of bytes"));
-                                    return;
-                                }
-
-                                // Look for more data
-                                if (!WinHttpQueryDataAvailable(hRequestHandle, nullptr))
-                                {
-                                    p_request_context->report_error(GetLastError(), _XPLATSTR("Error querying for http body chunk"));
-                                    return;
-                                }
-                            });
-                        }
-                    }
-                    else
-                    {
-                        // Done reading so set task completion event and close the request handle.
-                        p_request_context->complete_request((size_t)p_request_context->m_downloaded);
+                            read_next_response_chunk(p_request_context, bytesRead);
+                        });
                     }
                     break;
                 }

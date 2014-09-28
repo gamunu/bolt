@@ -27,6 +27,7 @@
 
 #include "stdafx.h"
 #include "cpprest/http_helpers.h"
+#include <array>
 
 using namespace web; 
 using namespace utility;
@@ -71,6 +72,7 @@ namespace details
     {
         static const utility::string_t json_types[] = {
             mime_types::application_json,
+            mime_types::application_xjson,
             mime_types::text_json,
             mime_types::text_xjson,
             mime_types::text_javascript,
@@ -318,9 +320,9 @@ namespace details
         {
             char buffer[9];
 #ifdef _MS_WINDOWS
-            sprintf_s(buffer, 9, "%8IX", bytes_read);
+            sprintf_s(buffer, sizeof(buffer), "%8IX", bytes_read);
 #else
-            sprintf(buffer, "%8zX", bytes_read);
+            snprintf(buffer, sizeof(buffer), "%8zX", bytes_read);
 #endif
             memcpy(&data[0], buffer, 8);
             while (data[offset] == ' ') ++offset;
@@ -332,8 +334,8 @@ namespace details
     }
 
 #if (!defined(_MS_WINDOWS) || defined(__cplusplus_winrt))
-    const bool valid_chars [] =
-    {
+    const std::array<bool,128> valid_chars =
+    {{
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 0-15
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, //16-31
         0, 1, 0, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0, //32-47
@@ -342,19 +344,18 @@ namespace details
         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, //80-95
         0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, //96-111
         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0 //112-127
-    };
+    }};
 
     // Checks if the method contains any invalid characters
-        bool validate_method(const utility::string_t& method)
+    bool validate_method(const utility::string_t& method)
     {
-        for (auto iter = method.begin(); iter != method.end(); iter++)
+        for (auto ch : method)
         {
-            char_t ch = *iter;
-
-            if (size_t(ch) >= 128)
+            size_t ch_sz = static_cast<size_t>(ch);
+            if (ch_sz >= 128)
                 return false;
 
-            if (!valid_chars[ch])
+            if (!valid_chars[ch_sz])
                 return false;
         }
 

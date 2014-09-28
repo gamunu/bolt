@@ -47,8 +47,6 @@ utility::istream_t& web::json::operator >> (utility::istream_t &is, json::value 
     return is;
 }
 
-#pragma region json::value Constructors
-
 web::json::value::value() : 
     m_value(utility::details::make_unique<web::json::details::_Null>())
 #ifdef ENABLE_JSON_VALUE_VISUALIZER
@@ -105,12 +103,26 @@ web::json::value::value(utility::string_t value) :
 #endif
     { }
 
+web::json::value::value(utility::string_t value, bool has_escape_chars) :
+m_value(utility::details::make_unique<web::json::details::_String>(std::move(value), has_escape_chars))
+#ifdef ENABLE_JSON_VALUE_VISUALIZER
+, m_kind(value::String)
+#endif
+{ }
+
 web::json::value::value(const utility::char_t* value) : 
-    m_value(utility::details::make_unique<web::json::details::_String>(utility::string_t(value)))
+    m_value(utility::details::make_unique<web::json::details::_String>(value))
 #ifdef ENABLE_JSON_VALUE_VISUALIZER
     ,m_kind(value::String)
 #endif
     { }
+
+web::json::value::value(const utility::char_t* value, bool has_escape_chars) :
+m_value(utility::details::make_unique<web::json::details::_String>(utility::string_t(value), has_escape_chars))
+#ifdef ENABLE_JSON_VALUE_VISUALIZER
+, m_kind(value::String)
+#endif
+{ }
 
 web::json::value::value(const value &other) : 
     m_value(other.m_value->_copy_value())
@@ -130,14 +142,14 @@ web::json::value &web::json::value::operator=(const value &other)
     }
     return *this;
 }
-web::json::value::value(value &&other) : 
+web::json::value::value(value &&other) _noexcept : 
     m_value(std::move(other.m_value))
 #ifdef ENABLE_JSON_VALUE_VISUALIZER
     ,m_kind(other.m_kind)
 #endif
 {}
 
-web::json::value &web::json::value::operator=(web::json::value &&other)
+web::json::value &web::json::value::operator=(web::json::value &&other) _noexcept
 {
     if(this != &other)
     {
@@ -148,11 +160,6 @@ web::json::value &web::json::value::operator=(web::json::value &&other)
     }
     return *this;
 }
-
-#pragma endregion
-
-
-#pragma region Static Factories
 
 web::json::value web::json::value::null()
 {
@@ -177,6 +184,16 @@ web::json::value web::json::value::boolean(bool value)
 web::json::value web::json::value::string(utility::string_t value)
 {
     std::unique_ptr<details::_Value> ptr = utility::details::make_unique<details::_String>(std::move(value));
+    return web::json::value(std::move(ptr)
+#ifdef ENABLE_JSON_VALUE_VISUALIZER
+            ,value::String
+#endif
+            );
+}
+
+web::json::value web::json::value::string(utility::string_t value, bool has_escape_chars)
+{
+    std::unique_ptr<details::_Value> ptr = utility::details::make_unique<details::_String>(std::move(value), has_escape_chars);
     return web::json::value(std::move(ptr)
 #ifdef ENABLE_JSON_VALUE_VISUALIZER
             ,value::String
@@ -245,8 +262,6 @@ web::json::value web::json::value::array(std::vector<value> elements)
 #endif
             );
 }
-
-#pragma endregion
 
 web::json::number web::json::value::as_number() const
 {
@@ -331,7 +346,7 @@ bool web::json::details::_String::has_escape_chars(const _String &str)
 }
 
 web::json::details::_Object::_Object(const _Object& other) : 
-    m_object(other.m_object.m_elements, other.m_object.m_keep_order), web::json::details::_Value(other) {}
+    web::json::details::_Value(other), m_object(other.m_object.m_elements, other.m_object.m_keep_order) {}
 
 web::json::value::value_type json::value::type() const { return m_value->type(); }
 
@@ -363,7 +378,13 @@ bool web::json::details::_Object::has_field(const utility::string_t &key) const
     return m_object.find(key) != m_object.end();
 }
 
-utility::string_t json::value::to_string() const { return m_value->to_string(); }
+utility::string_t json::value::to_string() const 
+{
+#ifndef _MS_WINDOWS
+    utility::details::scoped_c_thread_locale locale;
+#endif
+    return m_value->to_string(); 
+}
 
 bool json::value::operator==(const json::value &other) const
 {
@@ -410,7 +431,6 @@ const web::json::value& web::json::value::at(const utility::string_t& key) const
 {
     return this->as_object().at(key);
 }
-
 
 web::json::value& web::json::value::operator [] (const utility::string_t &key)
 {

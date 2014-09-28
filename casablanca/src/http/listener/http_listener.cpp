@@ -39,6 +39,14 @@ static void check_listener_uri(const http::uri &address)
 {
     // Somethings like proper URI schema are verified by the URI class.
     // We only need to check certain things specific to HTTP.
+
+#ifdef _MS_WINDOWS	
+    //HTTP Server API includes SSL support 
+    if(address.scheme() != U("http") && address.scheme() != U("https"))
+    {
+        throw std::invalid_argument("URI scheme must be 'http' or 'https'");
+    }
+#else
     if(address.scheme() == U("https"))
     {
         throw std::invalid_argument("Listeners using 'https' are not yet supported");
@@ -48,6 +56,7 @@ static void check_listener_uri(const http::uri &address)
     {
         throw std::invalid_argument("URI scheme must be 'http'");
     }
+#endif
 
     if(address.host().empty())
     {
@@ -122,13 +131,15 @@ pplx::task<void> details::http_listener_impl::close()
 {
     // Do nothing if the close operation was already attempted
     // Not thread safe.
-    if (m_closed) return pplx::task_from_result();
+    // Note: Return the previous close task
+    if (m_closed) return m_close_task;
 
     m_closed = true;
-    return web::http::experimental::details::http_server_api::unregister_listener(this);
+    m_close_task = web::http::experimental::details::http_server_api::unregister_listener(this);
+    return m_close_task;
 }
 
-pplx::task<http_response> details::http_listener_impl::handle_request(http_request msg)
+void details::http_listener_impl::handle_request(http_request msg)
 {
     // Specific method handler takes priority over general.
     const method &mtd = msg.method();
@@ -156,8 +167,6 @@ pplx::task<http_response> details::http_listener_impl::handle_request(http_reque
         response.headers().add(U("Allow"), get_supported_methods());
         msg.reply(response);
     }
-
-    return msg.get_response();
 }
 
 utility::string_t details::http_listener_impl::get_supported_methods() const 
