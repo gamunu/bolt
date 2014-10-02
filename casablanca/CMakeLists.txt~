@@ -121,8 +121,8 @@ set(SOURCES
     src/http/listener/http_listener.cpp
     src/http/listener/http_msg_listen.cpp
     src/http/listener/http_server_api.cpp
-  #  src/websockets/client/ws_msg.cpp
-  #  src/websockets/client/ws_client.cpp
+    src/websockets/client/ws_msg.cpp
+    src/websockets/client/ws_client.cpp
     src/utilities/base64.cpp
     src/http/client/http_win7.cpp
     src/http/listener/http_windows_server.cpp
